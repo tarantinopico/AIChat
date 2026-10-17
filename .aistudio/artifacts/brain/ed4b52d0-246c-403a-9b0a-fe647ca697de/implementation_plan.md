@@ -1,56 +1,51 @@
-# GitHub Actions CI/CD Workflow: APK Build & Release
+# Fix GitHub Actions Android APK Build Workflow
 
-An automated GitHub Actions workflow to build, package, and deliver debug APKs for **Vertex AI Studio & File Client** on every push, pull request, manual dispatch, and git release tag.
+Resolve the GitHub Actions compilation failure caused by `android-actions/setup-android@v3` attempting to download the removed legacy `tools` SDK package.
 
 ## User Review & Critical Decisions
 
 > [!IMPORTANT]
-> The following workflow configuration decisions have been confirmed:
-
-- **Confirmed - Build Variant**: **Debug APK** (`:app:assembleDebug`). Allows direct download and sideloading on any Android phone or emulator without requiring complex keystore setup in GitHub Secrets.
-- **Confirmed - Trigger Conditions**: Runs automatically on:
-  - `push` to the `main` branch
-  - `pull_request` targeting `main`
-  - `push` of version tags (e.g., `v*`)
-  - `workflow_dispatch` (manual trigger button in GitHub UI with optional inputs)
-- **Confirmed - Delivery & Distribution**:
-  - Uploads the compiled `.apk` as a downloadable GitHub Actions artifact (`vertex-ai-studio-debug-apk`).
-  - When triggered by a git tag (e.g., `git push origin v1.0.0`), automatically creates a GitHub Release and attaches the `.apk` file for direct public downloading.
+> **Root Cause Identified**: 
+> In the workflow run log, `android-actions/setup-android@v3` crashed with:
+> `Warning: Failed to find package 'tools'`
+> `Error: The process '/usr/local/lib/android/sdk/cmdline-tools/16.0/bin/sdkmanager' failed with exit code 1`
+> Google recently deprecated and removed the legacy `tools` package from the Android SDK repositories, breaking `android-actions/setup-android@v3`.
+>
+> **The Fix**: 
+> GitHub's `ubuntu-latest` virtual environment already comes with the official Android SDK, Platform Tools, Build Tools, and `cmdline-tools` pre-installed at `/usr/local/lib/android/sdk` (`$ANDROID_HOME`). We remove `android-actions/setup-android@v3` and use the built-in Android SDK environment with automated license acceptance.
 
 ---
 
-## 1. Overview & Workflow Design
+## 1. Overview of Proposed Changes
 
-The workflow `.github/workflows/build-apk.yml` handles the entire Android compilation pipeline on GitHub-hosted runners (`ubuntu-latest`).
+We will update `.github/workflows/build-apk.yml` with a battle-tested, zero-failure GitHub Actions configuration:
 
-### Pipeline Stages
-1. **Repository Checkout**: Clones the repository with full git history.
-2. **Environment & Secrets Initialization**: Creates a valid `.env` file from `.env.example` so the Secrets Gradle Plugin resolves smoothly during the build.
-3. **Java & Android SDK Setup**: Configures JDK 17 (Temurin) and ensures Android build-tools and platforms are present.
-4. **Gradle & Wrapper Provisioning**: Ensures Gradle wrapper is initialized and cached via `gradle/actions/setup-gradle@v4`.
-5. **Compilation (`assembleDebug`)**: Builds `:app:assembleDebug`, producing `app-debug.apk`.
-6. **Artifact Storage**: Uploads the APK to GitHub Actions run artifacts for 14-day retention.
-7. **Automated Release on Tag**: Automatically publishes a GitHub Release with release notes and attaches the APK whenever a version tag is pushed.
+1. **Remove Broken Action**: Eliminate `android-actions/setup-android@v3`.
+2. **Use Pre-installed Android SDK**: Reference GitHub's native `$ANDROID_HOME` (`/usr/local/lib/android/sdk`).
+3. **Automated License Acceptance**: Run `yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true` to guarantee all licenses are accepted non-interactively without prompting or crashing.
+4. **Environment Variables**: Explicitly export `ANDROID_HOME: /usr/local/lib/android/sdk` and `ANDROID_SDK_ROOT: /usr/local/lib/android/sdk`.
+5. **Robust Build**: Build `:app:assembleDebug` and verify APK output exists before upload.
 
 ---
 
-## 2. Technical Architecture & CI/CD Flow
+## 2. Updated Workflow Architecture
 
 ```
 ┌────────────────────────────────────────────────────────┐
 │                   GitHub Triggers                      │
-│   • push: main         • pull_request: main            │
-│   • tags: 'v*'         • workflow_dispatch (Manual)    │
+│   • push: main/master   • pull_request: main/master    │
+│   • tags: 'v*'          • workflow_dispatch (Manual)   │
 └───────────────────────────┬────────────────────────────┘
                             │
                             ▼
 ┌────────────────────────────────────────────────────────┐
-│                Runner: ubuntu-latest                   │
+│             Runner: ubuntu-latest (Native SDK)         │
 │  1. actions/checkout@v4                                │
-│  2. actions/setup-java@v4 (Java 17 Temurin)            │
-│  3. gradle/actions/setup-gradle@v4 (Caching & Setup)   │
-│  4. Generate dummy .env (Secrets plugin compatibility) │
-│  5. Run build: ./gradlew :app:assembleDebug            │
+│  2. actions/setup-java@v4 (JDK 17 Temurin)             │
+│  3. Accept Android SDK Licenses non-interactively      │
+│  4. gradle/actions/setup-gradle@v4                     │
+│  5. Prepare .env file                                  │
+│  6. ./gradlew :app:assembleDebug                       │
 └───────────────────────────┬────────────────────────────┘
                             │
        ┌────────────────────┴────────────────────┐
@@ -59,22 +54,12 @@ The workflow `.github/workflows/build-apk.yml` handles the entire Android compil
 │    Always (Push / PR / UI)  │   │     If Tag Push ('v*')      │
 │ actions/upload-artifact@v4  │   │ softprops/action-gh-release │
 │  - vertex-ai-studio-apk     │   │  - Creates GitHub Release   │
-│  - Retention: 14 days       │   │  - Attaches app-debug.apk   │
+│  - app-debug.apk (14 days)  │   │  - Attaches APK to release  │
 └─────────────────────────────┘   └─────────────────────────────┘
 ```
 
 ---
 
-## 3. Key Product & Security Decisions
-
-- **Handling `.env` Secrets**: Android project uses `com.google.android.libraries.mapsplatform.secrets-gradle-plugin`. In CI without configured secrets, a missing `.env` causes build failure. The workflow automatically creates a minimal `.env` file (`touch .env`) to guarantee zero-configuration compilation.
-- **Gradle Caching**: Uses official `gradle/actions/setup-gradle@v4` to cache dependencies and build cache, reducing build times from minutes to seconds on subsequent runs.
-- **Executable Permissions**: Ensures `chmod +x gradlew` is applied before invocation.
-- **Git Wrapper Generation**: Generates `gradlew` script and commits it alongside the workflow so any developer or CI runner can invoke `./gradlew` immediately without requiring a pre-installed Gradle binary.
-
----
-
-## 4. Execution Steps
-1. Generate standard executable `gradlew` and `gradlew.bat` files matching Gradle 9.3.1.
-2. Create `.github/workflows/build-apk.yml` with all triggers, build steps, artifact upload, and release automation.
-3. Validate and verify project compilation.
+## 3. Execution Plan
+1. Edit `.github/workflows/build-apk.yml` to replace `android-actions/setup-android@v3` with direct license acceptance and native Android SDK paths.
+2. Verify local project compilation via `compile_applet`.
