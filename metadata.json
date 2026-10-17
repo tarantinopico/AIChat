@@ -1,0 +1,6 @@
+{
+  "name": "Vertex AI Studio",
+  "description": "Google Cloud Vertex AI & File Client for high-capacity code generation, direct model config, and live code file parsing.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

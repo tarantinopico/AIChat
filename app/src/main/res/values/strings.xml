@@ -1,0 +1,19 @@
+<resources>
+    <string name="app_name">Vertex AI Studio</string>
+    <string name="new_chat">Nové vlákno</string>
+    <string name="threads">Konverzace</string>
+    <string name="settings">Nastavení</string>
+    <string name="send">Odeslat</string>
+    <string name="stop">Zastavit</string>
+    <string name="service_account_hint">Vložte Service Account JSON klíč</string>
+    <string name="test_connection">Otestovat spojení</string>
+    <string name="download_file">Stáhnout soubor</string>
+    <string name="open_file">Otevřít</string>
+    <string name="code_preview">Kód</string>
+    <string name="live_preview">Živý náhled</string>
+    <string name="auto_continue">Automaticky navazovat</string>
+    <string name="manual_continue">Pokračovat v generování</string>
+    <string name="copy">Kopírovat</string>
+    <string name="copied">Zkopírováno</string>
+    <string name="error_details">Zobrazit surový JSON chyby</string>
+</resources>
