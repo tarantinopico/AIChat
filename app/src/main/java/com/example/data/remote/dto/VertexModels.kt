@@ -31,7 +31,12 @@ data class VertexGenerationConfig(
     val topP: Float = 0.95f,
     val topK: Int = 40,
     val maxOutputTokens: Int = 8192,
-    val thinkingLevel: String = "HIGH" // "OFF", "LOW", "HIGH"
+    val supportsThinking: Boolean = false,
+    val thinkingContainerKey: String = "thinkingConfig",
+    val thinkingParamKey: String = "thinkingLevel",
+    val thinkingValue: String = "",
+    val isThinkingOff: Boolean = true,
+    val isThinkingBudgetNumber: Boolean = false
 ) {
     fun toJson(): JSONObject {
         return JSONObject().apply {
@@ -40,22 +45,27 @@ data class VertexGenerationConfig(
             put("topK", topK)
             put("maxOutputTokens", maxOutputTokens)
 
-            // Google Gemini 2.5 / 3 API expects thinkingLevel ("LOW" or "HIGH"), NOT thinkingBudget!
-            // When OFF, omit thinkingConfig completely so models without thinking support don't fail.
-            when (thinkingLevel.uppercase()) {
-                "LOW" -> {
-                    val thinkingObj = JSONObject().apply {
-                        put("thinkingLevel", "LOW")
-                    }
-                    put("thinkingConfig", thinkingObj)
+            // CRITICAL: Include thinking parameter ONLY when model supports thinking AND thinking is not OFF
+            if (supportsThinking && !isThinkingOff && thinkingValue.isNotBlank()) {
+                val effectiveParamKey = thinkingParamKey.ifBlank { "thinkingLevel" }
+                val paramVal: Any = if (isThinkingBudgetNumber) {
+                    val budgetInt = thinkingValue.toIntOrNull() ?: 0
+                    budgetInt
+                } else {
+                    thinkingValue
                 }
-                "HIGH", "MEDIUM", "MAX" -> {
-                    val thinkingObj = JSONObject().apply {
-                        put("thinkingLevel", "HIGH")
+
+                if (isThinkingBudgetNumber && (paramVal as Int) <= 0) {
+                    // Skip if invalid budget
+                } else {
+                    if (thinkingContainerKey.isNotBlank()) {
+                        val thinkingObj = JSONObject()
+                        thinkingObj.put(effectiveParamKey, paramVal)
+                        put(thinkingContainerKey, thinkingObj)
+                    } else {
+                        put(effectiveParamKey, paramVal)
                     }
-                    put("thinkingConfig", thinkingObj)
                 }
-                // If "OFF" or empty, do not include thinkingConfig in request
             }
         }
     }
@@ -101,4 +111,12 @@ class VertexApiException(
     val httpCode: Int,
     val rawErrorJson: String,
     override val message: String
-) : Exception(message)
+) : Exception(message) {
+    val isThinkingIncompatibility: Boolean
+        get() = message.contains("thinking_level", ignoreCase = true) ||
+                message.contains("thinking budget", ignoreCase = true) ||
+                message.contains("thinking_budget", ignoreCase = true) ||
+                message.contains("thinkingConfig", ignoreCase = true) ||
+                rawErrorJson.contains("thinking_level", ignoreCase = true) ||
+                rawErrorJson.contains("thinking budget", ignoreCase = true)
+}

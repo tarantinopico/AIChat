@@ -12,6 +12,8 @@ import com.example.data.local.datastore.SettingsDataStore
 import com.example.data.local.entity.ChatMessageEntity
 import com.example.data.local.entity.ChatThreadEntity
 import com.example.data.local.entity.FileArtifactEntity
+import com.example.data.local.model.ModelConfig
+import com.example.data.local.model.ThinkingLevelConfig
 import com.example.data.remote.VertexAiApiClient
 import com.example.data.remote.dto.VertexApiException
 import com.example.data.remote.dto.VertexContent
@@ -181,9 +183,80 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun setThinkingLevel(level: String) {
+    fun setThinkingLevel(levelId: String) {
         viewModelScope.launch {
-            settingsDataStore.updateThinkingLevel(level)
+            settingsDataStore.updateActiveThinkingLevelId(levelId)
+        }
+    }
+
+    fun updateEnableThinkingFeature(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsDataStore.updateEnableThinkingFeature(enabled)
+        }
+    }
+
+    // --- Model CRUD Operations ---
+    fun saveModel(model: ModelConfig) {
+        viewModelScope.launch {
+            settingsDataStore.saveModel(model)
+        }
+    }
+
+    fun deleteModel(modelId: String) {
+        viewModelScope.launch {
+            settingsDataStore.deleteModel(modelId)
+        }
+    }
+
+    fun setModelSupportsThinking(modelId: String, supportsThinking: Boolean) {
+        viewModelScope.launch {
+            settingsDataStore.setModelSupportsThinking(modelId, supportsThinking)
+        }
+    }
+
+    fun updateActiveModelThinkingParamKey(paramKey: String, containerKey: String? = null) {
+        viewModelScope.launch {
+            settingsDataStore.updateActiveModelThinkingParamKey(paramKey, containerKey)
+        }
+    }
+
+    fun updateActiveModelThinkingContainerKey(containerKey: String) {
+        viewModelScope.launch {
+            settingsDataStore.updateActiveModelThinkingContainerKey(containerKey)
+        }
+    }
+
+    suspend fun testModel(model: ModelConfig): Result<String> {
+        val currentSettings = settings.value
+        return vertexClient.testConnection(
+            serviceAccountJson = currentSettings.serviceAccountJson,
+            region = currentSettings.region,
+            modelId = model.id
+        )
+    }
+
+    // --- Thinking Level CRUD Operations ---
+    fun saveThinkingLevel(level: ThinkingLevelConfig) {
+        viewModelScope.launch {
+            settingsDataStore.saveThinkingLevel(level)
+        }
+    }
+
+    fun deleteThinkingLevel(levelId: String) {
+        viewModelScope.launch {
+            settingsDataStore.deleteThinkingLevel(levelId)
+        }
+    }
+
+    // --- Error Recovery Action ---
+    fun fixThinkingErrorAndRetry(messageId: Long, threadId: Long, modelId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            // 1. Mark model as non-thinking to prevent error permanently
+            settingsDataStore.setModelSupportsThinking(modelId, false)
+            // 2. Remove the error message
+            chatDao.deleteMessageById(messageId)
+            // 3. Re-trigger generation for this thread
+            triggerModelGeneration(threadId, continuePrompt = null)
         }
     }
 
@@ -202,9 +275,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun editUserMessage(messageId: Long, newText: String) {
         val threadId = _activeThreadId.value ?: return
         viewModelScope.launch(Dispatchers.IO) {
-            // Delete this user message and all subsequent responses
             chatDao.deleteMessagesFrom(threadId, messageId)
-            // Re-send user prompt
             sendMessage(newText)
         }
     }
@@ -217,9 +288,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             if (targetIndex > 0) {
                 val prevUserMessage = messages[targetIndex - 1]
                 if (prevUserMessage.role == "user") {
-                    // Delete from target model message onwards
                     chatDao.deleteMessagesFrom(threadId, messageId)
-                    // Trigger generation for previous user message
                     triggerModelGeneration(threadId, continuePrompt = null)
                 }
             }
@@ -295,7 +364,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val dbMessages = chatDao.getMessagesForThreadSync(threadId)
         val contextLimit = currentSettings.contextLimit
 
-        // Pinned messages are ALWAYS preserved regardless of contextLimit
         val pinnedMessages = dbMessages.filter { it.isPinned }
         val nonPinnedMessages = dbMessages.filter { !it.isPinned }
         val recentNonPinned = nonPinnedMessages.takeLast(contextLimit)
@@ -309,7 +377,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             if (msg.isError) continue
             val parts = mutableListOf<VertexContentPart>()
 
-            // Retrieve files attached to this message if any
             val files = chatDao.getFilesForMessageSync(msg.id)
             var fullText = msg.cleanTextContent
             if (files.isNotEmpty()) {
@@ -332,13 +399,35 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             )
         }
 
+        val activeModel = currentSettings.activeModelConfig
+        val activeThinkingLevel = currentSettings.activeThinkingLevel
+        val isThinkingEffective = currentSettings.enableThinkingFeature && activeModel.supportsThinking && !activeThinkingLevel.isOff
+
+        val effectiveParamKey = if (activeThinkingLevel.customParamKeyOverride.isNotBlank()) {
+            activeThinkingLevel.customParamKeyOverride
+        } else {
+            activeModel.thinkingParamKey.ifBlank { "thinkingLevel" }
+        }
+
+        val effectiveContainerKey = if (activeThinkingLevel.customContainerKeyOverride.isNotBlank()) {
+            activeThinkingLevel.customContainerKeyOverride
+        } else {
+            activeModel.thinkingContainerKey
+        }
+
         val config = VertexGenerationConfig(
-            temperature = currentSettings.temperature,
-            topP = currentSettings.topP,
-            topK = currentSettings.topK,
-            maxOutputTokens = currentSettings.maxOutputTokens,
-            thinkingLevel = currentSettings.thinkingLevel
+            temperature = activeModel.temperature,
+            topP = activeModel.topP,
+            topK = activeModel.topK,
+            maxOutputTokens = activeModel.maxOutputTokens,
+            supportsThinking = isThinkingEffective,
+            thinkingContainerKey = effectiveContainerKey,
+            thinkingParamKey = effectiveParamKey,
+            thinkingValue = activeThinkingLevel.value,
+            isThinkingOff = !isThinkingEffective,
+            isThinkingBudgetNumber = activeThinkingLevel.isBudgetNumber
         )
+
         val safety = if (currentSettings.isBlockNoneSafety) {
             VertexSafetySetting.createBlockNoneList()
         } else {
@@ -349,10 +438,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             isStreaming = true,
             streamingThreadId = threadId,
             autoContinuing = continuePrompt != null,
-            isThinkingStage = currentSettings.thinkingLevel != "OFF"
+            isThinkingStage = isThinkingEffective
         )
 
-        // Start Foreground Service for continuous background processing & notifications
+        // Start Foreground Service
         GenerationForegroundService.startService(getApplication(), currentSettings.activeModelId)
 
         activeGenerationJob?.cancel()
@@ -393,7 +482,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                             isThinkingStage = isStillThinking
                         )
 
-                        // Update Notification Progress
                         val statusText = if (isStillThinking) {
                             "Přemýšlím (Thinking)..."
                         } else if (parsed.files.isNotEmpty()) {
@@ -446,7 +534,6 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 val messageId = chatDao.insertMessage(modelMessage)
                 chatDao.touchThread(threadId)
 
-                // Save all extracted files to Room
                 for (file in finalParsed.files) {
                     val fileEntity = FileArtifactEntity(
                         messageId = messageId,
@@ -463,11 +550,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
                 _activeStreamState.value = ActiveStreamState(isStreaming = false)
 
-                // Foreground Service Completion Notification
                 val totalLines = finalParsed.files.sumOf { it.lineCount }
                 GenerationForegroundService.completeService(getApplication(), finalParsed.files.size, totalLines)
 
-                // Handle Auto-Continue if finishReason was MAX_TOKENS
                 if (lastFinishReason == "MAX_TOKENS" && currentSettings.autoContinueMode == "AUTO") {
                     triggerModelGeneration(
                         threadId = threadId,
@@ -557,7 +642,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         )
         if (result.isSuccess) {
             val list = result.getOrNull()!!
-            settingsDataStore.setApiModels(list.toSet())
+            settingsDataStore.syncApiModels(list)
         }
         return result
     }

@@ -63,9 +63,12 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import com.example.ui.models.ModelManagerDialog
+import com.example.ui.thinking.ThinkingLevelManagerDialog
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -120,6 +123,8 @@ fun SettingsScreen(
     var connectionTestResult by remember { mutableStateOf<String?>(null) }
     var connectionTestError by remember { mutableStateOf<Pair<String, String?>?>(null) }
     var isRefreshingModels by remember { mutableStateOf(false) }
+    var showModelManagerDialog by remember { mutableStateOf(false) }
+    var showThinkingManagerDialog by remember { mutableStateOf(false) }
 
     // File picker for .json service account key
     val jsonFilePickerLauncher = rememberLauncherForActivityResult(
@@ -272,70 +277,284 @@ fun SettingsScreen(
                 border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Psychology, contentDescription = null, tint = IndigoAccent)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Úroveň Thinking (Uvažování modelu)",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                        )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Psychology, contentDescription = null, tint = IndigoAccent)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Úroveň Thinking (Uvažování modelu)",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                            )
+                        }
                     }
 
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = "Gemini 2.5 vyžaduje parametr 'thinkingLevel'. Můžete jej také kdykoli okamžitě přepínat přímo v chatu na horní liště.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Spacer(modifier = Modifier.height(10.dp))
 
-                    Spacer(modifier = Modifier.height(14.dp))
+                    // Master Switch to completely disable/enable thinking
+                    Surface(
+                        shape = RoundedCornerShape(10.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Povolit volbu Thinking v aplikaci",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp
+                                )
+                                Text(
+                                    text = "Vypněte pro úplné skrytí výběru uvažování z chatu i generování.",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(
+                                checked = settings.enableThinkingFeature,
+                                onCheckedChange = { viewModel.updateEnableThinkingFeature(it) },
+                                colors = SwitchDefaults.colors(checkedThumbColor = IndigoAccent, checkedTrackColor = IndigoAccent.copy(alpha = 0.5f))
+                            )
+                        }
+                    }
 
-                    val levels = listOf(
-                        Triple("OFF", "❌ Vypnuto (Off)", "Okamžitá odezva bez uvažovací fáze. Vhodné pro rychlé dotazy a maximální rychlost."),
-                        Triple("LOW", "⚡ Nízká (Low)", "Lehké uvažování modelu. Vyvážený kompromis mezi rychlostí a logickým uvažováním."),
-                        Triple("HIGH", "🧠 Vysoká (High)", "Hloubkové uvažování pro generování rozsáhlého kódu, debuggování a složitou architekturu.")
-                    )
+                    if (settings.enableThinkingFeature) {
+                        Spacer(modifier = Modifier.height(14.dp))
 
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        levels.forEach { (levelKey, title, description) ->
-                            val isSelected = settings.thinkingLevel.equals(levelKey, ignoreCase = true)
-                            Surface(
-                                shape = RoundedCornerShape(10.dp),
-                                color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
-                                border = androidx.compose.foundation.BorderStroke(
-                                    width = if (isSelected) 2.dp else 1.dp,
-                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
-                                ),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { viewModel.setThinkingLevel(levelKey) }
-                            ) {
+                        // --- KARTA PRO PŘÍMÉ NASTAVENÍ VLASTNÍHO ARGUMENTU ---
+                        val activeModel = settings.activeModelConfig
+                        var customArgText by remember(activeModel.id, activeModel.thinkingParamKey) {
+                            mutableStateOf(activeModel.thinkingParamKey)
+                        }
+                        var customContainerText by remember(activeModel.id, activeModel.thinkingContainerKey) {
+                            mutableStateOf(activeModel.thinkingContainerKey)
+                        }
+
+                        Card(
+                            shape = RoundedCornerShape(12.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, IndigoAccent.copy(alpha = 0.5f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp)) {
                                 Row(
-                                    modifier = Modifier.padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    modifier = Modifier.fillMaxWidth()
                                 ) {
-                                    Column(modifier = Modifier.weight(1f)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Default.Tune, contentDescription = null, tint = IndigoAccent, modifier = Modifier.size(18.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
                                         Text(
-                                            text = title,
+                                            text = "Název argumentu v JSON (pro model ${activeModel.displayName})",
                                             fontWeight = FontWeight.Bold,
-                                            fontSize = 14.sp
-                                        )
-                                        Spacer(modifier = Modifier.height(2.dp))
-                                        Text(
-                                            text = description,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            fontSize = 13.sp,
+                                            color = IndigoAccent
                                         )
                                     }
+                                }
 
-                                    if (isSelected) {
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Icon(
-                                            Icons.Default.CheckCircle,
-                                            contentDescription = "Aktivní",
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(20.dp)
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    text = "Zvolte z předvoleb nebo napište libovolný název (např. premysleni_pro_api):",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                // Responsive FlowRow for presets so NONE get squished or clipped
+                                FlowRow(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    val presets = listOf(
+                                        "premysleni_pro_api" to "Vlastní argument",
+                                        "thinkingLevel" to "Gemini 2.5 (camelCase)",
+                                        "thinking_level" to "Vertex (snake_case)",
+                                        "thinkingBudget" to "Token Budget"
+                                    )
+                                    presets.forEach { (presetKey, _) ->
+                                        val isChosen = customArgText == presetKey
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = if (isChosen) IndigoAccent else MaterialTheme.colorScheme.surfaceVariant,
+                                            border = androidx.compose.foundation.BorderStroke(
+                                                1.dp,
+                                                if (isChosen) IndigoAccent else MaterialTheme.colorScheme.outlineVariant
+                                            ),
+                                            modifier = Modifier.clickable {
+                                                customArgText = presetKey
+                                                viewModel.updateActiveModelThinkingParamKey(presetKey)
+                                                Toast.makeText(context, "Nastaven klíč: $presetKey", Toast.LENGTH_SHORT).show()
+                                            }
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+                                            ) {
+                                                if (isChosen) {
+                                                    Icon(
+                                                        Icons.Default.CheckCircle,
+                                                        contentDescription = null,
+                                                        tint = Color.White,
+                                                        modifier = Modifier.size(13.dp)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                }
+                                                Text(
+                                                    text = presetKey,
+                                                    fontSize = 11.sp,
+                                                    fontWeight = if (isChosen) FontWeight.Bold else FontWeight.Medium,
+                                                    color = if (isChosen) Color.White else MaterialTheme.colorScheme.onSurface
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                OutlinedTextField(
+                                    value = customArgText,
+                                    onValueChange = {
+                                        customArgText = it
+                                        viewModel.updateActiveModelThinkingParamKey(it)
+                                    },
+                                    label = { Text("Pole pro vlastní argument:") },
+                                    placeholder = { Text("např. premysleni_pro_api") },
+                                    supportingText = { Text("Zde můžete zadat jakýkoliv libovolný název argumentu.") },
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+
+                                Spacer(modifier = Modifier.height(4.dp))
+
+                                OutlinedTextField(
+                                    value = customContainerText,
+                                    onValueChange = {
+                                        customContainerText = it
+                                        viewModel.updateActiveModelThinkingContainerKey(it)
+                                    },
+                                    label = { Text("Obalovací JSON objekt (Container):") },
+                                    placeholder = { Text("výchozí: thinkingConfig (nebo nechte prázdné pro kořen)") },
+                                    supportingText = { Text("Ponechte 'thinkingConfig', nebo vymažte pro přímý zápis do payloadu.") },
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                // Live JSON Preview
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = Color(0xFF1E1E2E),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    val currentVal = settings.activeThinkingLevel.value.ifBlank { "HIGH" }
+                                    val previewJson = if (settings.activeThinkingLevel.isOff) {
+                                        "// Uvažování je pro aktivní úroveň vypnuto (žádný thinking objekt se neposílá)"
+                                    } else if (customContainerText.isBlank()) {
+                                        "\"generationConfig\": {\n  \"${customArgText.ifBlank { "thinkingLevel" }}\": \"$currentVal\"\n}"
+                                    } else {
+                                        "\"generationConfig\": {\n  \"$customContainerText\": {\n    \"${customArgText.ifBlank { "thinkingLevel" }}\": \"$currentVal\"\n  }\n}"
+                                    }
+                                    Column(modifier = Modifier.padding(10.dp)) {
+                                        Text(
+                                            text = "Živý náhled JSON payloadu:",
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFFA6ADC8)
                                         )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = previewJson,
+                                            fontSize = 11.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                            color = Color(0xFFA6E3A1)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Aktivní úroveň: ${settings.activeThinkingLevel.label}",
+                                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                                color = IndigoAccent
+                            )
+
+                            Button(
+                                onClick = { showThinkingManagerDialog = true },
+                                colors = ButtonDefaults.buttonColors(containerColor = IndigoAccent),
+                                modifier = Modifier.height(34.dp),
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                            ) {
+                                Icon(Icons.Default.Tune, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Správce úrovní (CRUD)", fontSize = 12.sp)
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            settings.thinkingLevels.forEach { level ->
+                                val isSelected = level.id == settings.activeThinkingLevelId
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+                                    border = androidx.compose.foundation.BorderStroke(
+                                        width = if (isSelected) 1.5.dp else 1.dp,
+                                        color = if (isSelected) IndigoAccent else MaterialTheme.colorScheme.outlineVariant
+                                    ),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { viewModel.setThinkingLevel(level.id) }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = level.label,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 13.sp
+                                            )
+                                            if (level.description.isNotBlank()) {
+                                                Text(
+                                                    text = level.description,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
+
+                                        if (isSelected) {
+                                            Icon(
+                                                Icons.Default.CheckCircle,
+                                                contentDescription = "Aktivní",
+                                                tint = IndigoAccent,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -496,20 +715,37 @@ fun SettingsScreen(
                 }
             }
 
-            // --- SECTION 4: Region & Model Management ---
+            // --- SECTION 4: Region & Správa Modelů ---
             Card(
                 shape = RoundedCornerShape(14.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
                 border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Default.Tune, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Region & Modely",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                        )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Tune, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "Region & Správa Modelů",
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                            )
+                        }
+
+                        Button(
+                            onClick = { showModelManagerDialog = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                            modifier = Modifier.height(34.dp),
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                        ) {
+                            Icon(Icons.Default.Tune, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Správce modelů (CRUD)", fontSize = 12.sp)
+                        }
                     }
 
                     Spacer(modifier = Modifier.height(12.dp))
@@ -586,10 +822,10 @@ fun SettingsScreen(
                         onExpandedChange = { modelExpanded = !modelExpanded }
                     ) {
                         OutlinedTextField(
-                            value = settings.activeModelId,
+                            value = "${settings.activeModelConfig.displayName} (${settings.activeModelId})",
                             onValueChange = {},
                             readOnly = true,
-                            label = { Text("Model ID") },
+                            label = { Text("Model") },
                             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = modelExpanded) },
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -599,11 +835,16 @@ fun SettingsScreen(
                             expanded = modelExpanded,
                             onDismissRequest = { modelExpanded = false }
                         ) {
-                            settings.allAvailableModels.forEach { m ->
+                            settings.models.forEach { m ->
                                 DropdownMenuItem(
-                                    text = { Text(m) },
+                                    text = {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(if (m.supportsThinking) "🧠 " else "⚡ ")
+                                            Text(m.displayName, fontWeight = if (m.id == settings.activeModelId) FontWeight.Bold else FontWeight.Normal)
+                                        }
+                                    },
                                     onClick = {
-                                        viewModel.switchActiveModel(m)
+                                        viewModel.switchActiveModel(m.id)
                                         modelExpanded = false
                                     }
                                 )
@@ -611,59 +852,36 @@ fun SettingsScreen(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(14.dp))
-                    Text("Přidat Custom Model ID:", style = MaterialTheme.typography.labelSmall)
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
+                    val activeModel = settings.activeModelConfig
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        OutlinedTextField(
-                            value = newCustomModelName,
-                            onValueChange = { newCustomModelName = it },
-                            placeholder = { Text("např. gemini-4-argon") },
-                            modifier = Modifier.weight(1f),
-                            singleLine = true
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Button(
-                            onClick = {
-                                if (newCustomModelName.isNotBlank()) {
-                                    scope.launch {
-                                        viewModel.settingsDataStore.addCustomModel(newCustomModelName)
-                                        viewModel.switchActiveModel(newCustomModelName.trim())
-                                        newCustomModelName = ""
-                                    }
-                                }
-                            },
-                            enabled = newCustomModelName.isNotBlank()
-                        ) {
-                            Icon(Icons.Default.Add, contentDescription = null)
-                            Text("Přidat")
-                        }
-                    }
-
-                    // Custom models list with remove
-                    if (settings.customModels.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(10.dp))
-                        Text("Vlastní modely:", style = MaterialTheme.typography.labelSmall)
-                        Spacer(modifier = Modifier.height(4.dp))
-                        settings.customModels.forEach { customModel ->
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 2.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(customModel, style = MaterialTheme.typography.bodySmall, fontFamily = FontFamily.Monospace)
-                                IconButton(
-                                    onClick = { scope.launch { viewModel.settingsDataStore.removeCustomModel(customModel) } },
-                                    modifier = Modifier.size(28.dp)
-                                ) {
-                                    Icon(Icons.Default.Delete, contentDescription = "Smazat", tint = RoseError, modifier = Modifier.size(16.dp))
-                                }
+                        Column(modifier = Modifier.padding(10.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    if (activeModel.supportsThinking) Icons.Default.Psychology else Icons.Default.Tune,
+                                    contentDescription = null,
+                                    tint = if (activeModel.supportsThinking) IndigoAccent else MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Režim uvažování: " + if (activeModel.supportsThinking) "Podporováno (${activeModel.thinkingParamKey})" else "Standardní (bez uvažování)",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (activeModel.supportsThinking) IndigoAccent else MaterialTheme.colorScheme.onSurface
+                                )
                             }
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "Max tokenů: ${activeModel.maxOutputTokens} • Teplota: ${activeModel.temperature}",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
                     }
                 }
@@ -964,5 +1182,19 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.height(20.dp))
         }
+    }
+
+    if (showModelManagerDialog) {
+        ModelManagerDialog(
+            viewModel = viewModel,
+            onDismiss = { showModelManagerDialog = false }
+        )
+    }
+
+    if (showThinkingManagerDialog) {
+        ThinkingLevelManagerDialog(
+            viewModel = viewModel,
+            onDismiss = { showThinkingManagerDialog = false }
+        )
     }
 }

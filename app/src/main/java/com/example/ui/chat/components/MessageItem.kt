@@ -9,8 +9,6 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -68,11 +66,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.local.entity.ChatMessageEntity
 import com.example.data.local.entity.FileArtifactEntity
-import com.example.domain.util.ExtractedFile
 import com.example.ui.theme.AmberWarning
-import com.example.ui.theme.CyanPrimary
 import com.example.ui.theme.CyanPrimaryDark
-import com.example.ui.theme.EmeraldSuccess
 import com.example.ui.theme.IndigoAccent
 import com.example.ui.theme.RoseError
 import com.example.ui.theme.Slate700
@@ -88,7 +83,8 @@ fun MessageItem(
     onTogglePin: (Long, Boolean) -> Unit,
     onContinueGeneration: (Long) -> Unit,
     onOpenFile: (FileArtifactEntity) -> Unit,
-    onDownloadFile: (FileArtifactEntity) -> Unit
+    onDownloadFile: (FileArtifactEntity) -> Unit,
+    onFixThinkingError: ((Long, Long, String) -> Unit)? = null
 ) {
     val isUser = message.role == "user"
     val clipboardManager = LocalClipboardManager.current
@@ -152,7 +148,7 @@ fun MessageItem(
                     )
                 }
 
-                // Render File Cards (NO inline code blocks!)
+                // Render File Cards
                 if (files.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(10.dp))
                     Text(
@@ -176,7 +172,10 @@ fun MessageItem(
                     Spacer(modifier = Modifier.height(10.dp))
                     ErrorDiagnosticCard(
                         errorSummary = message.errorSummary.orEmpty(),
-                        rawErrorJson = message.rawErrorJson
+                        rawErrorJson = message.rawErrorJson,
+                        onFixThinkingAndRetry = if (onFixThinkingError != null) {
+                            { onFixThinkingError(message.id, message.threadId, message.modelId) }
+                        } else null
                     )
                 }
 
@@ -210,7 +209,6 @@ fun MessageItem(
                     )
                 }
             } else {
-                // Regenerate
                 IconButton(
                     onClick = { onRegenerate(message.id) },
                     modifier = Modifier.size(32.dp)
@@ -223,7 +221,6 @@ fun MessageItem(
                     )
                 }
 
-                // Pin / Unpin
                 IconButton(
                     onClick = { onTogglePin(message.id, message.isPinned) },
                     modifier = Modifier.size(32.dp)
@@ -236,7 +233,6 @@ fun MessageItem(
                     )
                 }
 
-                // Copy Text
                 IconButton(
                     onClick = {
                         clipboardManager.setText(AnnotatedString(message.cleanTextContent))
@@ -252,7 +248,6 @@ fun MessageItem(
                     )
                 }
 
-                // Manual Continue Button if response stopped due to MAX_TOKENS
                 if (message.finishReason == "MAX_TOKENS") {
                     Spacer(modifier = Modifier.width(6.dp))
                     OutlinedButton(
@@ -405,10 +400,21 @@ fun ThinkingBlock(thinking: String) {
 }
 
 @Composable
-fun ErrorDiagnosticCard(errorSummary: String, rawErrorJson: String?) {
+fun ErrorDiagnosticCard(
+    errorSummary: String,
+    rawErrorJson: String?,
+    onFixThinkingAndRetry: (() -> Unit)? = null
+) {
     var expanded by remember { mutableStateOf(false) }
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
+
+    val isThinkingIncompatible = errorSummary.contains("thinking_level", ignoreCase = true) ||
+            errorSummary.contains("thinking budget", ignoreCase = true) ||
+            errorSummary.contains("thinking_budget", ignoreCase = true) ||
+            errorSummary.contains("thinkingConfig", ignoreCase = true) ||
+            rawErrorJson?.contains("thinking_level", ignoreCase = true) == true ||
+            rawErrorJson?.contains("thinking budget", ignoreCase = true) == true
 
     Surface(
         shape = RoundedCornerShape(10.dp),
@@ -430,6 +436,35 @@ fun ErrorDiagnosticCard(errorSummary: String, rawErrorJson: String?) {
                     style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
                     color = RoseError
                 )
+            }
+
+            // Actionable fix banner for thinking incompatibility
+            if (isThinkingIncompatible && onFixThinkingAndRetry != null) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, AmberWarning),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(10.dp)) {
+                        Text(
+                            text = "Tento model nepodporuje parametr uvažování (thinking). Můžete jej jedním kliknutím přepnout do standardního režimu a požadavek ihned zopakovat:",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Button(
+                            onClick = onFixThinkingAndRetry,
+                            colors = ButtonDefaults.buttonColors(containerColor = IndigoAccent),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("⚡ Opravit model a zkusit znovu bez Thinking", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
             }
 
             if (!rawErrorJson.isNullOrBlank()) {
