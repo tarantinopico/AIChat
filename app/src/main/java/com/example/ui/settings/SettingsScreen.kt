@@ -362,14 +362,28 @@ fun SettingsScreen(
                                     }
                                 }
 
-                                Spacer(modifier = Modifier.height(6.dp))
-                                Text(
-                                    text = "Zvolte z předvoleb nebo napište libovolný název (např. premysleni_pro_api):",
-                                    fontSize = 11.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                Spacer(modifier = Modifier.height(8.dp))
+
+                                OutlinedTextField(
+                                    value = customArgText,
+                                    onValueChange = {
+                                        customArgText = it
+                                        viewModel.updateActiveModelThinkingParamKey(it)
+                                    },
+                                    label = { Text("Vlastní název argumentu pro API:") },
+                                    placeholder = { Text("např. premysleni_pro_api, my_custom_param") },
+                                    supportingText = { Text("Zadejte libovolný název argumentu pro model.") },
+                                    singleLine = true,
+                                    modifier = Modifier.fillMaxWidth()
                                 )
 
                                 Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "Doporučené standardní názvy pro Vertex AI / Gemini:",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Spacer(modifier = Modifier.height(4.dp))
 
                                 // Responsive FlowRow for presets so NONE get squished or clipped
                                 FlowRow(
@@ -378,12 +392,11 @@ fun SettingsScreen(
                                     verticalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
                                     val presets = listOf(
-                                        "premysleni_pro_api" to "Vlastní argument",
-                                        "thinkingLevel" to "Gemini 2.5 (camelCase)",
-                                        "thinking_level" to "Vertex (snake_case)",
+                                        "thinkingLevel" to "Gemini 2.5",
+                                        "thinking_level" to "Vertex AI",
                                         "thinkingBudget" to "Token Budget"
                                     )
-                                    presets.forEach { (presetKey, _) ->
+                                    presets.forEach { (presetKey, hint) ->
                                         val isChosen = customArgText == presetKey
                                         Surface(
                                             shape = RoundedCornerShape(8.dp),
@@ -412,7 +425,7 @@ fun SettingsScreen(
                                                     Spacer(modifier = Modifier.width(4.dp))
                                                 }
                                                 Text(
-                                                    text = presetKey,
+                                                    text = "$presetKey ($hint)",
                                                     fontSize = 11.sp,
                                                     fontWeight = if (isChosen) FontWeight.Bold else FontWeight.Medium,
                                                     color = if (isChosen) Color.White else MaterialTheme.colorScheme.onSurface
@@ -421,21 +434,6 @@ fun SettingsScreen(
                                         }
                                     }
                                 }
-
-                                Spacer(modifier = Modifier.height(10.dp))
-
-                                OutlinedTextField(
-                                    value = customArgText,
-                                    onValueChange = {
-                                        customArgText = it
-                                        viewModel.updateActiveModelThinkingParamKey(it)
-                                    },
-                                    label = { Text("Pole pro vlastní argument:") },
-                                    placeholder = { Text("např. premysleni_pro_api") },
-                                    supportingText = { Text("Zde můžete zadat jakýkoliv libovolný název argumentu.") },
-                                    singleLine = true,
-                                    modifier = Modifier.fillMaxWidth()
-                                )
 
                                 Spacer(modifier = Modifier.height(4.dp))
 

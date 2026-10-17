@@ -37,6 +37,14 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.outlined.PushPin
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Psychology
+import androidx.compose.ui.draw.rotate
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -348,51 +356,165 @@ fun FileArtifactCard(
 @Composable
 fun ThinkingBlock(thinking: String) {
     var expanded by remember { mutableStateOf(false) }
+    val clipboardManager = LocalClipboardManager.current
+    val context = LocalContext.current
+
+    val wordCount = remember(thinking) {
+        thinking.trim().split("\\s+".toRegex()).count { it.isNotEmpty() }
+    }
+
+    val arrowRotation by animateFloatAsState(
+        targetValue = if (expanded) 180f else 0f,
+        label = "thinkingArrowRotation"
+    )
 
     Surface(
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(12.dp),
         color = Slate900,
-        border = androidx.compose.foundation.BorderStroke(1.dp, Slate800),
-        modifier = Modifier.fillMaxWidth()
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (expanded) IndigoAccent else IndigoAccent.copy(alpha = 0.35f)
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
     ) {
-        Column(modifier = Modifier.padding(10.dp)) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            // Elegant single-line collapsed row (always strictly 1 line when collapsed)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { expanded = !expanded },
+                    .clickable { expanded = !expanded }
+                    .padding(horizontal = 12.dp, vertical = 9.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Default.AutoAwesome,
-                        contentDescription = null,
-                        tint = IndigoAccent,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f, fill = false)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(24.dp)
+                            .clip(CircleShape)
+                            .background(IndigoAccent.copy(alpha = 0.2f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            Icons.Default.Psychology,
+                            contentDescription = "Myšlenkový proces",
+                            tint = IndigoAccent,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
                     Text(
-                        text = "Myšlenkový proces (Thinking)",
-                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                        color = IndigoAccent
+                        text = "Myšlenkový proces",
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp
+                        ),
+                        color = Color(0xFFE2E8F0),
+                        maxLines = 1
+                    )
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    // Word count badge
+                    Surface(
+                        shape = RoundedCornerShape(12.dp),
+                        color = IndigoAccent.copy(alpha = 0.15f),
+                        border = androidx.compose.foundation.BorderStroke(0.5.dp, IndigoAccent.copy(alpha = 0.4f))
+                    ) {
+                        Text(
+                            text = "$wordCount slov",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = IndigoAccent,
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = if (expanded) "Sbalit" else "Rozbalit",
+                        fontSize = 11.sp,
+                        color = Color(0xFF94A3B8),
+                        modifier = Modifier.padding(end = 4.dp)
+                    )
+                    Icon(
+                        Icons.Default.KeyboardArrowDown,
+                        contentDescription = if (expanded) "Sbalit myšlenkový proces" else "Rozbalit myšlenkový proces",
+                        tint = IndigoAccent,
+                        modifier = Modifier
+                            .size(20.dp)
+                            .rotate(arrowRotation)
                     )
                 }
-                Icon(
-                    if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                    contentDescription = null,
-                    tint = Slate700
-                )
             }
 
-            AnimatedVisibility(visible = expanded) {
-                Column(modifier = Modifier.padding(top = 8.dp)) {
-                    Text(
-                        text = thinking,
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 12.sp,
-                        color = Color(0xFFCBD5E1),
-                        lineHeight = 18.sp
+            // Expanded view with thoughts, copy button, and formatted monospace text
+            AnimatedVisibility(
+                visible = expanded,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 12.dp, end = 12.dp, bottom = 12.dp, top = 2.dp)
+                ) {
+                    androidx.compose.material3.HorizontalDivider(
+                        color = IndigoAccent.copy(alpha = 0.2f),
+                        modifier = Modifier.padding(bottom = 8.dp)
                     )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Interní tok uvažování modelu (CoT):",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color(0xFF94A3B8)
+                        )
+
+                        FilledTonalButton(
+                            onClick = {
+                                clipboardManager.setText(AnnotatedString(thinking))
+                                Toast.makeText(context, "Myšlenkový proces zkopírován", Toast.LENGTH_SHORT).show()
+                            },
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                            modifier = Modifier.height(28.dp)
+                        ) {
+                            Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(12.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Kopírovat", fontSize = 11.sp)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFF090D16),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF1E293B)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = thinking,
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 12.sp,
+                            color = Color(0xFFCBD5E1),
+                            lineHeight = 18.sp,
+                            modifier = Modifier.padding(10.dp)
+                        )
+                    }
                 }
             }
         }

@@ -1,134 +1,29 @@
-# Model Manager (CRUD), Thinking Auto-Detection & Permanent API Error Resolution
+# Implementační plán: Elegantní jednořádkový Thinking blok & Vizuální dokonalost aplikace (DOKONČENO ✅)
 
-A comprehensive system upgrade providing full CRUD management for Vertex AI models, automatic capability detection with manual toggles, complete control over thinking feature visibility, and permanent elimination of the `thinking_level is not supported by this model` error.
-
-## User Review & Critical Decisions
-
-> [!IMPORTANT]
-> **Summary of Confirmed Decisions from Phase 1**:
-> 1. **Thinking Level Configuration**: Automatic model capability detection (e.g. Gemini 2.5 supports thinking, Gemini 1.5/2.0-flash does not) with per-model manual override toggle.
-> 2. **Model Management**: Full Model Manager interface with Create, Read, Update, Delete (CRUD) and direct per-model "Test Spojení" (ping) connectivity test.
-> 3. **Error Recovery**: Display an actionable error card with a one-tap `[⚡ Spustit znovu bez uvažování]` button that automatically marks the model as non-thinking and resumes generation instantly.
-> 4. **Thinking Visibility Control**: Added a master toggle in Settings to completely hide/disable the thinking level selector across the entire app if desired.
+Implementace kompaktního, vysoce elegantního zobrazení uvažování (thinking) modelu sbaleného do jednoho řádku s ikonou mozku a počtem slov, spolu s celkovým vizuálním auditem, odstraněním chyb a zdokonalením UI v celé aplikaci.
 
 ---
 
-## 1. Overview & Core Concept
+## 1. Shrnutí provedených úprav & uživatelských požadavků
 
-Vertex AI rejects `thinkingConfig` (and `thinking_level`) when sent to models that do not support reasoning (such as `gemini-1.5-pro`, `gemini-1.5-flash`, `gemini-2.0-flash`). This upgrade delivers:
-- **Intelligent Thinking Gate**: Only models configured with thinking capability will attach `thinkingConfig`. For non-thinking models, `thinkingConfig` is completely omitted.
-- **Actionable Chat Error Card**: If any model unexpectedly rejects thinking, an actionable error banner appears directly on the message with a one-tap `[⚡ Zkusit znovu bez uvažování]` button, which instantly updates the model's profile and re-runs generation.
-- **Full Model Manager (CRUD)**:
-  - Add custom Vertex AI models (e.g. fine-tuned endpoints, experimental checkpoints).
-  - Edit model metadata (display name, max output tokens, temperature, thinking support toggle).
-  - Delete user-created models.
-  - Test model connectivity individually with real-time ping.
-- **Full UI Polish & Empty States**:
-  - Empty conversation states with fast-start prompt cards.
-  - Empty model list states with guidance.
-  - Sleek visual badges showing whether a model supports reasoning.
+1. **Výchozí stav bloku uvažování (ThinkingBlock)**:
+   - ✅ Vždy výchozivě sbalený do jediného čistého elegantního řádku.
+   - ✅ Obsahuje ikonu mozku (`Icons.Default.Psychology`) v zaobleném kruhovém kontejneru.
+   - ✅ Zobrazuje text *"Myšlenkový proces"*.
+   - ✅ Obsahuje zaoblený pill odznak s přesným dynamickým počtem slov (např. *"248 slov"*).
+   - ✅ Obsahuje animovanou otočnou šipku pro rozbalení/sbalení s textovým hintem *"Rozbalit"* / *"Sbalit"*.
+   - ✅ Při rozbalení plynulou animací (`expandVertically + fadeIn`) zobrazí interní tok uvažování v přehledném monospace formátování spolu s tlačítkem *"Kopírovat"*.
 
----
+2. **Oprava zadávání vlastního argumentu (Custom Argument Key)**:
+   - ✅ Textové pole pro zadání libovolného vlastního argumentu (např. `premysleni_pro_api`, `my_custom_param`, ...) je umístěno na prvním a nejviditelnějším místě ve všech dialozích (`ThinkingLevelManagerDialog`, `ModelManagerDialog`, `SettingsScreen`, `ChatScreen`).
+   - ✅ Odstraněn matoucí/chybný přednastavený čip `premysleni_pro_api`, který působil jako zabugovaná volba namísto volného textového pole.
+   - ✅ Pod polem jsou přehledně umístěny pouze standardní pomocné čipy pro Vertex AI / Gemini 2.5 (`thinkingLevel`, `thinking_level`, `thinkingBudget`).
 
-## 2. User Experience & Visual Design
+3. **Vizuální opravy a doladění rozvržení v aplikaci**:
+   - ✅ Opraveny všechny přetékající a oříznuté čipy pomocí `FlowRow`.
+   - ✅ Všechny formuláře a editační dialogy mají `verticalScroll` pro plynulý průchod i při otevřené klávesnici.
+   - ✅ Konzistentní zaoblení, barevný kontrast v temném režimu a čisté odsazení v bublinách zpráv.
 
-### 2.1 Chat Screen & TopAppBar Experience
-- **Thinking Chip Behavior**:
-  - If the active model does **not** support thinking: The chip displays `[🧠 Není podporováno]` (or is hidden if global thinking toggle is disabled in Settings). Clicking it explains that this model operates in standard direct mode.
-  - If the model **does** support thinking: The chip shows `[🧠 Off / Low / High ▾]` with instant switching.
-- **Actionable Error Card**:
-  - When an API error occurs regarding thinking support, the error message highlights the issue and presents a prominent primary button:
-    `[⚡ Zkusit znovu bez uvažování (Fix & Retry)]`.
-  - Tapping it immediately disables thinking for that model and re-triggers generation without losing prompt context.
-- **Empty State**:
-  - Welcoming hero header with quick starter chips:
-    - ⚡ *Generovat Android Service*
-    - 📁 *Vytvořit souborový parser*
-    - 🛠️ *Navrhnout Compose UI rozhraní*
-
-### 2.2 Model Manager (CRUD Dialog / Screen)
-- Accessible from both the Chat TopAppBar model dropdown (`[⚙️ Spravovat modely...]`) and Settings.
-- **Model List**:
-  - Categorized into "Google Cloud Vertex Modely" and "Vlastní Modely".
-  - Each item shows: Model ID, Display Name, status badges (`[🧠 Thinking]` or `[⚡ Standard]`), and quick action buttons (Test, Edit, Delete).
-- **Model Editor Modal**:
-  - Model ID (e.g. `gemini-2.5-pro`, `projects/.../endpoints/...`)
-  - Friendly Name
-  - Checkbox: "Podporuje Thinking (Uvažování)"
-  - Max Output Tokens & Default Temperature
-  - Test ping button with live response check
-
-### 2.3 Settings Screen Master Toggles
-- New toggle: **"Zobrazovat výběr Thinking v aplikaci"** (Master Thinking Switch).
-  - When disabled, disables all thinking payloads and completely hides the chip in Chat.
-- Dedicated section linking directly to the Full Model Manager.
-
----
-
-## 3. Key Technical Decisions & Architecture
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                       ChatScreen                            │
-│  - TopAppBar (Model Picker + [⚙️ Model Manager] + [🧠 Chip]) │
-│  - Messages LazyColumn with Actionable Error Card           │
-│  - Empty State Quick Starters                               │
-└──────────────────────────────┬──────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────┐
-│                      ChatViewModel                          │
-│  - Model configs state & persistence                        │
-│  - Active model capability checking                         │
-│  - One-tap error retry without thinking                     │
-│  - Model CRUD operations (Add, Edit, Delete, Test)          │
-└──────────────────────────────┬──────────────────────────────┘
-                               │
-                ┌──────────────┴──────────────┐
-                ▼                             ▼
-┌──────────────────────────────┐ ┌──────────────────────────────┐
-│     SettingsDataStore        │ │     VertexAiApiClient        │
-│  - ModelConfig list (JSON)   │ │  - Request builder with      │
-│  - enableThinkingFeature     │ │    strict capability check   │
-│  - Active model ID           │ │  - Robust error parser       │
-└──────────────────────────────┘ └──────────────────────────────┘
-```
-
-### 3.1 ModelConfig Data Structure
-```kotlin
-data class ModelConfig(
-    val id: String,
-    val name: String,
-    val supportsThinking: Boolean = false,
-    val defaultThinkingLevel: String = "HIGH",
-    val maxOutputTokens: Int = 8192,
-    val isCustom: Boolean = false
-)
-```
-
-### 3.2 Safe Payload Generation in `VertexModels.kt`
-- Generation config only attaches `thinkingConfig` when:
-  `supportsThinking == true && thinkingLevel != "OFF" && enableThinkingFeature == true`
-- If any condition is false, `thinkingConfig` is completely omitted from the payload.
-
----
-
-## 4. Execution Steps
-
-1. **Model Representation (`ModelConfig.kt`)**:
-   - Define `ModelConfig` model with default library of official models (Gemini 2.5 Pro marked with thinking; 1.5 Pro, 1.5 Flash, 2.0 Flash marked without thinking).
-2. **DataStore Settings Extension**:
-   - Add `enableThinkingFeature` boolean key (default: true).
-   - Add `modelConfigs` JSON preference with CRUD helper methods (add, update, delete, getById).
-3. **Payload Fix (`VertexModels.kt` & `VertexAiApiClient.kt`)**:
-   - Check model `supportsThinking` before including `thinkingConfig`.
-   - Add specialized error classification for thinking incompatibility.
-4. **Actionable Error Card in Message UI**:
-   - In `MessageItem.kt`, if an error is identified as thinking rejection, render an actionable card with `Zkusit znovu bez uvažování`.
-5. **Model Manager Dialog (`ModelManagerDialog.kt`)**:
-   - Build a Material 3 dialog with listing, filter search, add new model, edit model modal, test connectivity, and delete.
-6. **Chat Screen & Settings Updates**:
-   - Hook Model Manager into Chat TopAppBar and Settings.
-   - Add Empty State in Chat when no messages exist.
-7. **Compilation & Verification**:
-   - Run `compile_applet` to ensure pristine compilation and error-free execution.
+4. **Verifikace a testování**:
+   - ✅ `compile_applet` úspěšně zkompilován bez varování a chyb.
+   - ✅ Robolectric testy (`ThinkingConfigurationTest`) ověřují serializaci JSON payloadu s vlastním klíčem argumentu i výpočet počtu slov uvažování (BUILD SUCCESSFUL).

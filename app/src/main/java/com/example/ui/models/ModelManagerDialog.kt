@@ -538,9 +538,22 @@ fun ModelEditDialog(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(modifier = Modifier.padding(10.dp)) {
-                            Text("Název argumentu v JSON payloadu:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                            Text("Vyberte z přednastavených nebo zadejte vlastní do pole níže:", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Název argumentu v JSON payloadu (pro thinking):", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                             Spacer(modifier = Modifier.height(8.dp))
+
+                            OutlinedTextField(
+                                value = thinkingParamKey,
+                                onValueChange = { thinkingParamKey = it },
+                                label = { Text("Vlastní název argumentu:") },
+                                placeholder = { Text("např. premysleni_pro_api, thinkingLevel...") },
+                                supportingText = { Text("Zde můžete zadat jakýkoliv libovolný název argumentu.") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text("Doporučené standardní názvy:", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(modifier = Modifier.height(4.dp))
 
                             // FlowRow layout so chips wrap cleanly on multiple lines and never get squished
                             androidx.compose.foundation.layout.FlowRow(
@@ -549,10 +562,9 @@ fun ModelEditDialog(
                                 verticalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 listOf(
-                                    "premysleni_pro_api" to "Vlastní argument",
-                                    "thinkingLevel" to "Gemini 2.5 (camelCase)",
-                                    "thinking_level" to "Vertex (snake_case)",
-                                    "thinkingBudget" to "Token Budget (číslo)"
+                                    "thinkingLevel" to "Gemini 2.5",
+                                    "thinking_level" to "Vertex AI",
+                                    "thinkingBudget" to "Token Budget"
                                 ).forEach { (presetKey, hint) ->
                                     val isChosen = thinkingParamKey == presetKey
                                     Surface(
@@ -573,7 +585,7 @@ fun ModelEditDialog(
                                                 Spacer(modifier = Modifier.width(4.dp))
                                             }
                                             Text(
-                                                text = presetKey,
+                                                text = "$presetKey ($hint)",
                                                 fontSize = 11.sp,
                                                 fontWeight = if (isChosen) FontWeight.Bold else FontWeight.Medium,
                                                 color = if (isChosen) Color.White else MaterialTheme.colorScheme.onSurface
@@ -585,22 +597,11 @@ fun ModelEditDialog(
 
                             Spacer(modifier = Modifier.height(10.dp))
                             OutlinedTextField(
-                                value = thinkingParamKey,
-                                onValueChange = { thinkingParamKey = it },
-                                label = { Text("Pole pro vlastní argument:") },
-                                placeholder = { Text("např. premysleni_pro_api nebo cokoliv") },
-                                supportingText = { Text("Zde můžete zadat jakýkoliv libovolný název argumentu.") },
-                                singleLine = true,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-
-                            Spacer(modifier = Modifier.height(4.dp))
-                            OutlinedTextField(
                                 value = thinkingContainerKey,
                                 onValueChange = { thinkingContainerKey = it },
                                 label = { Text("Obalovací objekt JSON (Container):") },
                                 placeholder = { Text("výchozí: thinkingConfig (prázdné = kořen)") },
-                                supportingText = { Text("Prázdné = zapíše argument přímo do generationConfig.") },
+                                supportingText = { Text("Ponechte thinkingConfig nebo vymažte pro zápis přímo do kořene.") },
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth()
                             )

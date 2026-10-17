@@ -943,6 +943,23 @@ fun ChatScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
+                    OutlinedTextField(
+                        value = quickArgKey,
+                        onValueChange = { quickArgKey = it },
+                        label = { Text("Vlastní název argumentu:") },
+                        placeholder = { Text("např. premysleni_pro_api, thinkingLevel...") },
+                        supportingText = { Text("Zadejte libovolný název argumentu pro tento model.") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Doporučené standardní názvy:",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
                     // Presets using FlowRow so none get squished
                     FlowRow(
                         modifier = Modifier.fillMaxWidth(),
@@ -950,11 +967,10 @@ fun ChatScreen(
                         verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         listOf(
-                            "premysleni_pro_api" to "Vlastní",
                             "thinkingLevel" to "Gemini 2.5",
-                            "thinking_level" to "Vertex",
+                            "thinking_level" to "Vertex AI",
                             "thinkingBudget" to "Token Budget"
-                        ).forEach { (presetKey, _) ->
+                        ).forEach { (presetKey, hint) ->
                             val isChosen = quickArgKey == presetKey
                             Surface(
                                 shape = RoundedCornerShape(8.dp),
@@ -979,7 +995,7 @@ fun ChatScreen(
                                         Spacer(modifier = Modifier.width(4.dp))
                                     }
                                     Text(
-                                        text = presetKey,
+                                        text = "$presetKey ($hint)",
                                         fontSize = 11.sp,
                                         fontWeight = if (isChosen) FontWeight.Bold else FontWeight.Medium,
                                         color = if (isChosen) Color.White else MaterialTheme.colorScheme.onSurface
@@ -988,16 +1004,6 @@ fun ChatScreen(
                             }
                         }
                     }
-
-                    OutlinedTextField(
-                        value = quickArgKey,
-                        onValueChange = { quickArgKey = it },
-                        label = { Text("Pole pro vlastní název:") },
-                        placeholder = { Text("např. premysleni_pro_api") },
-                        supportingText = { Text("Zde zadejte jakýkoliv libovolný argument.") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
 
                     OutlinedTextField(
                         value = quickContainerKey,

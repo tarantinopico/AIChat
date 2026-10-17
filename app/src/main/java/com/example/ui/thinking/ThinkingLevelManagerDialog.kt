@@ -444,9 +444,23 @@ fun ThinkingLevelEditDialog(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(modifier = Modifier.padding(10.dp)) {
-                            Text("Vlastní název klíče argumentu:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                            Text("Výchozí pro aktivní model je: $activeModelParamKey", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("Název argumentu v JSON (pro thinking):", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            Text("Výchozí parametr pro aktivní model je: \"$activeModelParamKey\"", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Spacer(modifier = Modifier.height(8.dp))
+
+                            OutlinedTextField(
+                                value = customParamKeyOverride,
+                                onValueChange = { customParamKeyOverride = it },
+                                label = { Text("Vlastní název argumentu:") },
+                                placeholder = { Text("např. premysleni_pro_api, my_custom_arg") },
+                                supportingText = { Text("Zadejte libovolný vlastní název nebo nechte prázdné pro výchozí z modelu.") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text("Doporučené standardní názvy pro Gemini / Vertex AI:", fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(modifier = Modifier.height(4.dp))
 
                             // FlowRow layout so chips wrap cleanly and never get squished or truncated
                             FlowRow(
@@ -455,11 +469,10 @@ fun ThinkingLevelEditDialog(
                                 verticalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 listOf(
-                                    "premysleni_pro_api" to "Vlastní",
                                     "thinkingLevel" to "Gemini 2.5",
-                                    "thinking_level" to "Vertex",
+                                    "thinking_level" to "Vertex AI",
                                     "thinkingBudget" to "Token Budget"
-                                ).forEach { (presetKey, _) ->
+                                ).forEach { (presetKey, hint) ->
                                     val isChosen = customParamKeyOverride == presetKey
                                     Surface(
                                         shape = RoundedCornerShape(8.dp),
@@ -484,7 +497,7 @@ fun ThinkingLevelEditDialog(
                                                 Spacer(modifier = Modifier.width(4.dp))
                                             }
                                             Text(
-                                                text = presetKey,
+                                                text = "$presetKey ($hint)",
                                                 fontSize = 11.sp,
                                                 fontWeight = if (isChosen) FontWeight.Bold else FontWeight.Medium,
                                                 color = if (isChosen) Color.White else MaterialTheme.colorScheme.onSurface
@@ -496,21 +509,11 @@ fun ThinkingLevelEditDialog(
 
                             Spacer(modifier = Modifier.height(10.dp))
                             OutlinedTextField(
-                                value = customParamKeyOverride,
-                                onValueChange = { customParamKeyOverride = it },
-                                label = { Text("Pole pro vlastní název argumentu:") },
-                                placeholder = { Text("např. premysleni_pro_api (prázdné = výchozí z modelu)") },
-                                supportingText = { Text("Zadejte libovolný název nebo zvolte čip výše.") },
-                                singleLine = true,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-
-                            Spacer(modifier = Modifier.height(4.dp))
-                            OutlinedTextField(
                                 value = customContainerKeyOverride,
                                 onValueChange = { customContainerKeyOverride = it },
                                 label = { Text("Obalovací objekt JSON (Container override):") },
-                                placeholder = { Text("ponechte prázdné pro výchozí z modelu") },
+                                placeholder = { Text("ponechte prázdné pro výchozí z modelu (např. thinkingConfig)") },
+                                supportingText = { Text("Určuje JSON container. Prázdné = převezme nastavení z modelu.") },
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth()
                             )
