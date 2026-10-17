@@ -265,7 +265,7 @@ fun SettingsScreen(
                 }
             }
 
-            // --- SECTION 2: Úroveň Thinking & Rozpočet ---
+            // --- SECTION 2: Úroveň Thinking (Uvažování modelu) ---
             Card(
                 shape = RoundedCornerShape(14.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
@@ -283,73 +283,64 @@ fun SettingsScreen(
 
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
-                        text = "Konfigurace 'thinkingBudget' pro Gemini 2.5 / 2.0 uvažovací modely. Určuje maximální počet tokenů, které model věnuje vnitřnímu plánování.",
+                        text = "Gemini 2.5 vyžaduje parametr 'thinkingLevel'. Můžete jej také kdykoli okamžitě přepínat přímo v chatu na horní liště.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    // Preset Chips
-                    val presets = listOf(
-                        Triple("OFF", "Vypnuto (0)", 0),
-                        Triple("LOW", "Nízká (1k)", 1024),
-                        Triple("MEDIUM", "Střední (4k)", 4096),
-                        Triple("HIGH", "Vysoká (16k)", 16384),
-                        Triple("MAX", "Max (32k)", 32768),
-                        Triple("CUSTOM", "Vlastní", settings.thinkingBudget)
-                    )
-
-                    FlowRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        presets.forEach { (presetKey, label, budget) ->
-                            val isSelected = settings.thinkingPreset == presetKey
-                            FilterChip(
-                                selected = isSelected,
-                                onClick = {
-                                    viewModel.updateThinkingConfig(budget, presetKey)
-                                },
-                                label = { Text(label, fontSize = 12.sp) },
-                                colors = FilterChipDefaults.filterChipColors(
-                                    selectedContainerColor = IndigoAccent,
-                                    selectedLabelColor = Color.White
-                                )
-                            )
-                        }
-                    }
-
                     Spacer(modifier = Modifier.height(14.dp))
 
-                    // Slider for granular budget
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = if (settings.thinkingBudget == 0) "Thinking: Vypnuto (0 tokenů)" else "Rozpočet: ${settings.thinkingBudget} tokenů",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp,
-                            color = if (settings.thinkingBudget == 0) MaterialTheme.colorScheme.onSurfaceVariant else IndigoAccent
-                        )
-                        Text(
-                            text = if (settings.thinkingBudget == 0) "Rychlá odezva" else "Hloubková analýza",
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    Slider(
-                        value = settings.thinkingBudget.toFloat(),
-                        onValueChange = { newVal ->
-                            viewModel.updateThinkingConfig(newVal.toInt(), "CUSTOM")
-                        },
-                        valueRange = 0f..65536f,
-                        steps = 15
+                    val levels = listOf(
+                        Triple("OFF", "❌ Vypnuto (Off)", "Okamžitá odezva bez uvažovací fáze. Vhodné pro rychlé dotazy a maximální rychlost."),
+                        Triple("LOW", "⚡ Nízká (Low)", "Lehké uvažování modelu. Vyvážený kompromis mezi rychlostí a logickým uvažováním."),
+                        Triple("HIGH", "🧠 Vysoká (High)", "Hloubkové uvažování pro generování rozsáhlého kódu, debuggování a složitou architekturu.")
                     )
+
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        levels.forEach { (levelKey, title, description) ->
+                            val isSelected = settings.thinkingLevel.equals(levelKey, ignoreCase = true)
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+                                border = androidx.compose.foundation.BorderStroke(
+                                    width = if (isSelected) 2.dp else 1.dp,
+                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { viewModel.setThinkingLevel(levelKey) }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = title,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 14.sp
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = description,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+
+                                    if (isSelected) {
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Icon(
+                                            Icons.Default.CheckCircle,
+                                            contentDescription = "Aktivní",
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
 

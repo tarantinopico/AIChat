@@ -1,102 +1,60 @@
-# Enhanced Vertex AI Studio: Thinking Level, Multi-Theme, Background Service & Visual Polish
+# Fix Thinking Level API Error & In-Chat Thinking Selector
 
-Enhance **Vertex AI Studio & File Client** with customizable Thinking levels, 4 distinctive color themes, background generation via an Android Foreground Service with live notifications, and upgraded visual polish.
+Fix the Vertex AI `HTTP 400: Thinking budget is not supported for this model. Use thinking level instead.` error and add a one-tap Thinking switcher directly to the Chat screen.
 
 ## User Review & Critical Decisions
 
 > [!IMPORTANT]
-> The following architectural and UX choices have been confirmed:
-
-- **Confirmed - Thinking Level Selection**: Dual-mode controls:
-  - **Preset Buttons**: `Vypnuto (0)`, `Nízká (1 024)`, `Střední (4 096)`, `Vysoká (16 384)`, `Maximum (32 768 / 65 536)`.
-  - **Custom Budget Slider**: Full granular control from 0 to 65,536 thinking tokens mapped to Vertex AI `thinkingConfig.thinkingBudget`.
-- **Confirmed - Color Themes**: 4 rich, hand-crafted themes:
-  1. **Clean Slate** (Default, dark slate with cyan accents)
-  2. **Obsidian Black** (OLED true black #000000 with electric silver/white accents)
-  3. **Cyberpunk Neon** (Midnight violet #0A0612 with hot neon cyan #00F0FF & magenta #FF007F)
-  4. **Forest Emerald** (Deep evergreen #05160E with vibrant jade emerald #10B981)
-- **Confirmed - Background Service & Notifications**:
-  - Android `GenerationForegroundService` (`foregroundServiceType="dataSync"`) keeping network streaming active when the user switches apps or turns off the screen.
-  - Ongoing notification showing live stream progress (thinking stage, live code line count, generated files).
-  - High-priority completion notification with alert chime when long generation finishes.
+> **Root Cause Identified**:
+> Google Gemini 2.5 / 3 models on Vertex AI reject `thinkingBudget` (integer) and require `thinkingLevel` (`"LOW"`, `"HIGH"`, or `"OFF"` / omitted). Sending `thinkingBudget` triggers:
+> `HTTP 400: Thinking budget is not supported for this model. Use thinking level instead.`
+>
+> **The Solution**:
+> 1. **Thinking API Fix**:
+>    - Map thinking modes to `thinkingLevel`:
+>      - `OFF`: Omit `thinkingConfig` (or set `thinkingLevel: "OFF"`), providing maximum speed and compatibility.
+>      - `LOW`: `thinkingConfig: { "thinkingLevel": "LOW" }` (concise thinking).
+>      - `HIGH` / `MAX` / `MEDIUM`: `thinkingConfig: { "thinkingLevel": "HIGH" }` (deep reasoning).
+>    - Include automatic fallback in `VertexAiApiClient`: if a model expects `thinkingBudget` or `thinkingLevel`, the client handles it transparently without failing.
+> 2. **In-Chat Thinking Selector**:
+>    - Add an interactive Thinking Chip in the Chat TopAppBar right beside the model dropdown:
+>      `[🧠 Off]`, `[🧠 Low]`, or `[🧠 High]`.
+>    - Clicking the chip opens a quick dropdown menu allowing instant switching anytime mid-conversation without having to open the Settings screen!
 
 ---
 
-## 1. Overview & Feature Design
+## 1. Overview & UI Changes
 
-### 1. Granular Thinking Level & Token Budget
-- In Settings and Chat configuration:
-  - Direct toggle between presets and manual token slider.
-  - Maps to Vertex AI REST body:
-    ```json
-    "generationConfig": {
-      "thinkingConfig": {
-        "thinkingBudget": 4096
-      }
+### In-Chat Thinking Quick Selector
+- Located directly in `ChatScreen`'s `TopAppBar`:
+  - Visual status pill: shows brain icon + current thinking mode (`Off`, `Low`, `High`).
+  - Dropdown options:
+    - ❌ **Vypnuto (Off)**: Rychlá odezva bez uvažování
+    - ⚡ **Nízká (Low)**: Rychlé lehké přemýšlení
+    - 🧠 **Vysoká (High)**: Hloubkové uvažování pro komplexní kód
+  - Changes are applied instantly to `ChatViewModel` and active chat generation.
+
+### Vertex AI Request Body Fix
+- Update `VertexGenerationConfig`:
+  ```json
+  "generationConfig": {
+    "temperature": 0.7,
+    "topP": 0.95,
+    "topK": 40,
+    "maxOutputTokens": 8192,
+    "thinkingConfig": {
+      "thinkingLevel": "LOW" // or "HIGH"
     }
-    ```
-  - When set to 0, thinking is explicitly disabled for faster responses and lower latency.
-  - When enabled, thinking output stream is captured separately and rendered in the expandable `ThinkingBlock`.
-
-### 2. Multi-Theme Engine (`AppThemeMode`)
-- `Theme.kt` and `Color.kt` expanded to support:
-  - `SLATE`, `OBSIDIAN`, `CYBERPUNK`, `EMERALD`.
-  - Persistent in `SettingsDataStore`.
-  - Full Material 3 colorScheme palette for each theme, respecting light and dark mode preferences.
-
-### 3. Background Generation (`GenerationForegroundService`)
-- Android 14+ compatible `ForegroundService` with notification channel:
-  - Channel: `"vertex_ai_streaming"` (High importance).
-  - Notification icon, title `"Vertex AI generuje..."`, text showing real-time token/file stats.
-  - Action button: `"Zastavit"` to cancel generation from notification bar.
-  - Runtime permission handler in Compose for `POST_NOTIFICATIONS` (Android 13+).
-
-### 4. Elevated Visual Polish & Aesthetics
-- Glassmorphic card styling with glowing accent borders.
-- Live streaming HUD: real-time token rate badge, animated pulse indicator during thinking vs writing code.
-- Refined typography and spacious layout with subtle depth elevation.
+  }
+  ```
+- When thinking is `OFF` (or budget 0), `thinkingConfig` is completely omitted from the payload, preventing any invalid argument errors on standard models.
 
 ---
 
-## 2. Technical Architecture & Component Flow
-
-```
-┌────────────────────────────────────────────────────────┐
-│                        UI LAYER                        │
-│   ChatScreen ──> Live HUD (Thinking/Writing Status)    │
-│   SettingsScreen ──> Thinking Presets + Theme Picker   │
-└───────────────────────────┬────────────────────────────┘
-                            │
-                            ▼
-┌────────────────────────────────────────────────────────┐
-│                   VIEWMODEL & SERVICE                  │
-│   ChatViewModel                                        │
-│     ├── Triggers GenerationForegroundService           │
-│     └── Updates Live Notification with Stream State    │
-│                                                        │
-│   GenerationForegroundService                          │
-│     ├── Foreground Service Notification (Progress)     │
-│     └── Completion & Stop Broadcast Intent Handlers    │
-└───────────────────────────┬────────────────────────────┘
-                            │
-       ┌────────────────────┴────────────────────┐
-       ▼                                         ▼
-┌─────────────────────────────┐   ┌─────────────────────────────┐
-│      SettingsDataStore      │   │     VertexAiApiClient       │
-│  - appTheme: String         │   │  - thinkingBudget: Int      │
-│  - thinkingBudget: Int      │   │  - streamGenerateContent    │
-│  - thinkingPreset: String   │   │                            │
-└─────────────────────────────┘   └─────────────────────────────┘
-```
-
----
-
-## 3. Execution Plan
-1. Update `AndroidManifest.xml` with `FOREGROUND_SERVICE`, `FOREGROUND_SERVICE_DATA_SYNC`, `POST_NOTIFICATIONS` permissions and register `GenerationForegroundService`.
-2. Expand `data/local/datastore/SettingsDataStore.kt` with `appTheme`, `thinkingBudget`, and `thinkingPreset`.
-3. Update `data/remote/dto/VertexModels.kt` and `VertexAiApiClient.kt` to include `thinkingConfig.thinkingBudget` in JSON requests.
-4. Expand `ui/theme/Color.kt` and `ui/theme/Theme.kt` with the 4 themes (Slate, Obsidian, Cyberpunk, Emerald).
-5. Implement `service/GenerationForegroundService.kt` for background execution and notifications.
-6. Enhance `ui/chat/ChatViewModel.kt` to coordinate with the foreground service and update notification state.
-7. Update `ui/chat/components/MessageItem.kt`, `ui/chat/ChatScreen.kt`, and `ui/settings/SettingsScreen.kt` with visual polish, theme selector, and thinking controls.
-8. Verify and validate compilation via `compile_applet`.
+## 2. Execution Plan
+1. Update `data/remote/dto/VertexModels.kt` to serialize `thinkingConfig` with `thinkingLevel` ("LOW", "HIGH") or omit when disabled.
+2. Update `data/local/datastore/SettingsDataStore.kt` with `thinkingLevel` ("OFF", "LOW", "HIGH") and sync functions.
+3. Update `ui/chat/ChatViewModel.kt` to expose quick thinking toggling (`setThinkingLevel("OFF" | "LOW" | "HIGH")`).
+4. Update `ui/chat/ChatScreen.kt` to add the interactive Thinking chip and dropdown in the `TopAppBar`.
+5. Update `ui/settings/SettingsScreen.kt` to align with `thinkingLevel`.
+6. Verify and compile via `compile_applet`.

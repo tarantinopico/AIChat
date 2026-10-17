@@ -181,9 +181,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun updateThinkingConfig(budget: Int, preset: String) {
+    fun setThinkingLevel(level: String) {
         viewModelScope.launch {
-            settingsDataStore.updateThinkingConfig(budget, preset)
+            settingsDataStore.updateThinkingLevel(level)
         }
     }
 
@@ -337,7 +337,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             topP = currentSettings.topP,
             topK = currentSettings.topK,
             maxOutputTokens = currentSettings.maxOutputTokens,
-            thinkingBudget = currentSettings.thinkingBudget
+            thinkingLevel = currentSettings.thinkingLevel
         )
         val safety = if (currentSettings.isBlockNoneSafety) {
             VertexSafetySetting.createBlockNoneList()
@@ -349,7 +349,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             isStreaming = true,
             streamingThreadId = threadId,
             autoContinuing = continuePrompt != null,
-            isThinkingStage = currentSettings.thinkingBudget > 0
+            isThinkingStage = currentSettings.thinkingLevel != "OFF"
         )
 
         // Start Foreground Service for continuous background processing & notifications

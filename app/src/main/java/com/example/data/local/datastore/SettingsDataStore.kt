@@ -34,8 +34,7 @@ data class AppSettings(
     val costPerMillionOutputTokens: Double = 5.00,
     val initialCreditUsd: Double = 300.0,
     val appTheme: String = "SLATE", // "SLATE", "OBSIDIAN", "CYBERPUNK", "EMERALD"
-    val thinkingBudget: Int = 4096, // 0 = off, up to 65536
-    val thinkingPreset: String = "MEDIUM" // "OFF", "LOW", "MEDIUM", "HIGH", "MAX", "CUSTOM"
+    val thinkingLevel: String = "HIGH" // "OFF", "LOW", "HIGH"
 ) {
     val allAvailableModels: List<String>
         get() = (customModels + apiModels).toList().distinct().sorted()
@@ -62,8 +61,7 @@ class SettingsDataStore(private val context: Context) {
         val COST_PER_MILLION_OUTPUT = doublePreferencesKey("cost_per_million_output")
         val INITIAL_CREDIT_USD = doublePreferencesKey("initial_credit_usd")
         val APP_THEME = stringPreferencesKey("app_theme")
-        val THINKING_BUDGET = intPreferencesKey("thinking_budget")
-        val THINKING_PRESET = stringPreferencesKey("thinking_preset")
+        val THINKING_LEVEL = stringPreferencesKey("thinking_level")
     }
 
     val settingsFlow: Flow<AppSettings> = context.dataStore.data.map { prefs ->
@@ -86,8 +84,7 @@ class SettingsDataStore(private val context: Context) {
             costPerMillionOutputTokens = prefs[PreferencesKeys.COST_PER_MILLION_OUTPUT] ?: 5.00,
             initialCreditUsd = prefs[PreferencesKeys.INITIAL_CREDIT_USD] ?: 300.0,
             appTheme = prefs[PreferencesKeys.APP_THEME] ?: "SLATE",
-            thinkingBudget = prefs[PreferencesKeys.THINKING_BUDGET] ?: 4096,
-            thinkingPreset = prefs[PreferencesKeys.THINKING_PRESET] ?: "MEDIUM"
+            thinkingLevel = prefs[PreferencesKeys.THINKING_LEVEL] ?: "HIGH"
         )
     }
 
@@ -169,10 +166,7 @@ class SettingsDataStore(private val context: Context) {
         context.dataStore.edit { it[PreferencesKeys.APP_THEME] = theme }
     }
 
-    suspend fun updateThinkingConfig(budget: Int, preset: String) {
-        context.dataStore.edit {
-            it[PreferencesKeys.THINKING_BUDGET] = budget
-            it[PreferencesKeys.THINKING_PRESET] = preset
-        }
+    suspend fun updateThinkingLevel(level: String) {
+        context.dataStore.edit { it[PreferencesKeys.THINKING_LEVEL] = level }
     }
 }

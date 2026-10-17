@@ -111,6 +111,7 @@ fun ChatScreen(
     var inputText by remember { mutableStateOf("") }
     var searchQuery by remember { mutableStateOf("") }
     var modelDropdownExpanded by remember { mutableStateOf(false) }
+    var thinkingDropdownExpanded by remember { mutableStateOf(false) }
 
     // Dialog States
     var editingMessage by remember { mutableStateOf<Pair<Long, String>?>(null) }
@@ -307,58 +308,118 @@ fun ChatScreen(
             topBar = {
                 TopAppBar(
                     title = {
-                        // Quick active model dropdown selector
-                        Box {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .clickable { modelDropdownExpanded = true }
-                                    .padding(horizontal = 6.dp, vertical = 4.dp)
-                            ) {
-                                Column {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            // Quick active model dropdown selector
+                            Box {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable { modelDropdownExpanded = true }
+                                        .padding(horizontal = 4.dp, vertical = 4.dp)
+                                ) {
+                                    Column {
                                         Text(
                                             text = settings.activeModelId,
                                             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                                             maxLines = 1
                                         )
-                                        if (settings.thinkingBudget > 0) {
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Surface(
-                                                shape = RoundedCornerShape(4.dp),
-                                                color = IndigoAccent.copy(alpha = 0.2f),
-                                                border = androidx.compose.foundation.BorderStroke(1.dp, IndigoAccent.copy(alpha = 0.6f))
-                                            ) {
-                                                Text(
-                                                    text = "T:${settings.thinkingBudget}",
-                                                    fontSize = 10.sp,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = IndigoAccent,
-                                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-                                                )
-                                            }
-                                        }
+                                        Text(
+                                            text = "${settings.region} • ${settings.appTheme}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
                                     }
-                                    Text(
-                                        text = "${settings.region} • ${settings.appTheme}",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
+                                    Icon(Icons.Default.ArrowDropDown, contentDescription = "Změnit model")
                                 }
-                                Icon(Icons.Default.ArrowDropDown, contentDescription = "Změnit model")
+
+                                DropdownMenu(
+                                    expanded = modelDropdownExpanded,
+                                    onDismissRequest = { modelDropdownExpanded = false }
+                                ) {
+                                    settings.allAvailableModels.forEach { model ->
+                                        DropdownMenuItem(
+                                            text = { Text(model) },
+                                            onClick = {
+                                                viewModel.switchActiveModel(model)
+                                                modelDropdownExpanded = false
+                                            }
+                                        )
+                                    }
+                                }
                             }
 
-                            DropdownMenu(
-                                expanded = modelDropdownExpanded,
-                                onDismissRequest = { modelDropdownExpanded = false }
-                            ) {
-                                settings.allAvailableModels.forEach { model ->
+                            Spacer(modifier = Modifier.width(6.dp))
+
+                            // Interactive Thinking Level Quick Dropdown Selector
+                            Box {
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = if (settings.thinkingLevel == "OFF") MaterialTheme.colorScheme.surfaceVariant else IndigoAccent.copy(alpha = 0.2f),
+                                    border = androidx.compose.foundation.BorderStroke(
+                                        1.dp,
+                                        if (settings.thinkingLevel == "OFF") MaterialTheme.colorScheme.outlineVariant else IndigoAccent.copy(alpha = 0.8f)
+                                    ),
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable { thinkingDropdownExpanded = true }
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Psychology,
+                                            contentDescription = null,
+                                            tint = if (settings.thinkingLevel == "OFF") MaterialTheme.colorScheme.onSurfaceVariant else IndigoAccent,
+                                            modifier = Modifier.size(15.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(3.dp))
+                                        Text(
+                                            text = when (settings.thinkingLevel.uppercase()) {
+                                                "LOW" -> "Low"
+                                                "HIGH", "MEDIUM" -> "High"
+                                                else -> "Off"
+                                            },
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (settings.thinkingLevel == "OFF") MaterialTheme.colorScheme.onSurfaceVariant else IndigoAccent
+                                        )
+                                        Icon(
+                                            Icons.Default.ArrowDropDown,
+                                            contentDescription = null,
+                                            tint = if (settings.thinkingLevel == "OFF") MaterialTheme.colorScheme.onSurfaceVariant else IndigoAccent,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                    }
+                                }
+
+                                DropdownMenu(
+                                    expanded = thinkingDropdownExpanded,
+                                    onDismissRequest = { thinkingDropdownExpanded = false }
+                                ) {
                                     DropdownMenuItem(
-                                        text = { Text(model) },
+                                        text = { Text("❌ Vypnuto (Off)") },
                                         onClick = {
-                                            viewModel.switchActiveModel(model)
-                                            modelDropdownExpanded = false
+                                            viewModel.setThinkingLevel("OFF")
+                                            thinkingDropdownExpanded = false
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("⚡ Nízká (Low) - rychlá odezva") },
+                                        onClick = {
+                                            viewModel.setThinkingLevel("LOW")
+                                            thinkingDropdownExpanded = false
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("🧠 Vysoká (High) - hloubkový kód") },
+                                        onClick = {
+                                            viewModel.setThinkingLevel("HIGH")
+                                            thinkingDropdownExpanded = false
                                         }
                                     )
                                 }

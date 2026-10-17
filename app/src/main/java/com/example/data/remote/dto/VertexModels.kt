@@ -31,7 +31,7 @@ data class VertexGenerationConfig(
     val topP: Float = 0.95f,
     val topK: Int = 40,
     val maxOutputTokens: Int = 8192,
-    val thinkingBudget: Int = 4096
+    val thinkingLevel: String = "HIGH" // "OFF", "LOW", "HIGH"
 ) {
     fun toJson(): JSONObject {
         return JSONObject().apply {
@@ -39,11 +39,23 @@ data class VertexGenerationConfig(
             put("topP", topP)
             put("topK", topK)
             put("maxOutputTokens", maxOutputTokens)
-            if (thinkingBudget >= 0) {
-                val thinkingObj = JSONObject().apply {
-                    put("thinkingBudget", thinkingBudget)
+
+            // Google Gemini 2.5 / 3 API expects thinkingLevel ("LOW" or "HIGH"), NOT thinkingBudget!
+            // When OFF, omit thinkingConfig completely so models without thinking support don't fail.
+            when (thinkingLevel.uppercase()) {
+                "LOW" -> {
+                    val thinkingObj = JSONObject().apply {
+                        put("thinkingLevel", "LOW")
+                    }
+                    put("thinkingConfig", thinkingObj)
                 }
-                put("thinkingConfig", thinkingObj)
+                "HIGH", "MEDIUM", "MAX" -> {
+                    val thinkingObj = JSONObject().apply {
+                        put("thinkingLevel", "HIGH")
+                    }
+                    put("thinkingConfig", thinkingObj)
+                }
+                // If "OFF" or empty, do not include thinkingConfig in request
             }
         }
     }

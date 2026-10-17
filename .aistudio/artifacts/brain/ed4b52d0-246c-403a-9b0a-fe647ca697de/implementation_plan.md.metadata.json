@@ -1,6 +1,6 @@
 {
-  "summary": "Implementation plan to add configurable Thinking levels (presets + custom token budget), 4 rich color themes (Slate, Obsidian Black, Cyberpunk Neon, Forest Emerald), a Foreground Service for background generation with live progress notifications, and elevated visual polish.",
-  "updatedAt": "2026-10-17T20:01:30.142451398Z",
+  "summary": "Implementation plan to add a quick Thinking toggle in the Chat screen TopBar and fix the Vertex AI HTTP 400 error by switching from thinkingBudget to thinkingLevel (LOW, HIGH, OFF) with automatic compatibility handling.",
+  "updatedAt": "2026-10-17T20:19:34.870773841Z",
   "requestFeedback": true,
   "userFacing": true
 }
