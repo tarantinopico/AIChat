@@ -32,7 +32,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.AlertDialog
@@ -540,7 +540,7 @@ fun ChatScreen(
                                         .size(48.dp)
                                         .testTag("send_button")
                                 ) {
-                                    Icon(Icons.Default.Send, contentDescription = "Odeslat")
+                                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Odeslat")
                                 }
                             }
                         }

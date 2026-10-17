@@ -1,65 +1,58 @@
-# Fix GitHub Actions Android APK Build Workflow
+# Fix GitHub Actions Keystore & Build Validation
 
-Resolve the GitHub Actions compilation failure caused by `android-actions/setup-android@v3` attempting to download the removed legacy `tools` SDK package.
+Resolve the GitHub Actions build error where `debug.keystore` was not found during `:app:validateSigningDebug`.
 
 ## User Review & Critical Decisions
 
 > [!IMPORTANT]
-> **Root Cause Identified**: 
-> In the workflow run log, `android-actions/setup-android@v3` crashed with:
-> `Warning: Failed to find package 'tools'`
-> `Error: The process '/usr/local/lib/android/sdk/cmdline-tools/16.0/bin/sdkmanager' failed with exit code 1`
-> Google recently deprecated and removed the legacy `tools` package from the Android SDK repositories, breaking `android-actions/setup-android@v3`.
+> **Root Cause Identified**:
+> In the GitHub Actions run log:
+> `Execution failed for task ':app:validateSigningDebug'.`
+> `> Keystore file '/home/runner/work/AIChat/AIChat/debug.keystore' not found for signing config 'debugConfig'.`
+> 
+> In `.gitignore`, `debug.keystore` is ignored so it does not get checked into git. AI Studio's local container automatically provisions `debug.keystore` before compiling, but GitHub Actions runners clone a clean repository without it.
 >
-> **The Fix**: 
-> GitHub's `ubuntu-latest` virtual environment already comes with the official Android SDK, Platform Tools, Build Tools, and `cmdline-tools` pre-installed at `/usr/local/lib/android/sdk` (`$ANDROID_HOME`). We remove `android-actions/setup-android@v3` and use the built-in Android SDK environment with automated license acceptance.
+> **The Fix**:
+> 1. Add an automated keystore preparation step in `.github/workflows/build-apk.yml`:
+>    - If `debug.keystore.base64` is present in the repository, decode it: `base64 -d debug.keystore.base64 > debug.keystore`
+>    - Otherwise, automatically generate a valid `debug.keystore` using standard `keytool`:
+>      `keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"`
+> 2. Fix deprecation warnings noticed in the build output:
+>    - In `AppDatabase.kt`: use `fallbackToDestructiveMigration(dropAllTables = true)`
+>    - In `ChatScreen.kt`: replace deprecated `Icons.Filled.Send` with `Icons.AutoMirrored.Filled.Send`.
 
 ---
 
 ## 1. Overview of Proposed Changes
 
-We will update `.github/workflows/build-apk.yml` with a battle-tested, zero-failure GitHub Actions configuration:
+### 1. `.github/workflows/build-apk.yml`
+Add the `Prepare debug keystore` step immediately before building with Gradle:
+```yaml
+      - name: Prepare debug keystore
+        run: |
+          if [ -f debug.keystore.base64 ]; then
+            echo "Decoding debug.keystore from base64..."
+            base64 -d debug.keystore.base64 > debug.keystore
+          elif [ ! -f debug.keystore ]; then
+            echo "Generating new debug.keystore with keytool..."
+            keytool -genkey -v -keystore debug.keystore \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
+```
 
-1. **Remove Broken Action**: Eliminate `android-actions/setup-android@v3`.
-2. **Use Pre-installed Android SDK**: Reference GitHub's native `$ANDROID_HOME` (`/usr/local/lib/android/sdk`).
-3. **Automated License Acceptance**: Run `yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true` to guarantee all licenses are accepted non-interactively without prompting or crashing.
-4. **Environment Variables**: Explicitly export `ANDROID_HOME: /usr/local/lib/android/sdk` and `ANDROID_SDK_ROOT: /usr/local/lib/android/sdk`.
-5. **Robust Build**: Build `:app:assembleDebug` and verify APK output exists before upload.
+### 2. Code Polishing
+- Update `AppDatabase.kt` to avoid the deprecation warning on `fallbackToDestructiveMigration`.
+- Update `ChatScreen.kt` to use `Icons.AutoMirrored.Filled.Send`.
 
 ---
 
-## 2. Updated Workflow Architecture
-
-```
-┌────────────────────────────────────────────────────────┐
-│                   GitHub Triggers                      │
-│   • push: main/master   • pull_request: main/master    │
-│   • tags: 'v*'          • workflow_dispatch (Manual)   │
-└───────────────────────────┬────────────────────────────┘
-                            │
-                            ▼
-┌────────────────────────────────────────────────────────┐
-│             Runner: ubuntu-latest (Native SDK)         │
-│  1. actions/checkout@v4                                │
-│  2. actions/setup-java@v4 (JDK 17 Temurin)             │
-│  3. Accept Android SDK Licenses non-interactively      │
-│  4. gradle/actions/setup-gradle@v4                     │
-│  5. Prepare .env file                                  │
-│  6. ./gradlew :app:assembleDebug                       │
-└───────────────────────────┬────────────────────────────┘
-                            │
-       ┌────────────────────┴────────────────────┐
-       ▼                                         ▼
-┌─────────────────────────────┐   ┌─────────────────────────────┐
-│    Always (Push / PR / UI)  │   │     If Tag Push ('v*')      │
-│ actions/upload-artifact@v4  │   │ softprops/action-gh-release │
-│  - vertex-ai-studio-apk     │   │  - Creates GitHub Release   │
-│  - app-debug.apk (14 days)  │   │  - Attaches APK to release  │
-└─────────────────────────────┘   └─────────────────────────────┘
-```
-
----
-
-## 3. Execution Plan
-1. Edit `.github/workflows/build-apk.yml` to replace `android-actions/setup-android@v3` with direct license acceptance and native Android SDK paths.
-2. Verify local project compilation via `compile_applet`.
+## 2. Execution Plan
+1. Update `.github/workflows/build-apk.yml` with the keystore provisioning step.
+2. Update `AppDatabase.kt` and `ChatScreen.kt`.
+3. Verify compilation locally using `compile_applet`.
