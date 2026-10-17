@@ -1,11 +1,13 @@
 package com.example.ui.chat
 
+import android.os.Build
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,13 +28,15 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Menu
-import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.AlertDialog
@@ -84,12 +88,8 @@ import com.example.ui.artifact.FileArtifactViewerDialog
 import com.example.ui.chat.components.FileArtifactCard
 import com.example.ui.chat.components.MessageItem
 import com.example.ui.chat.components.ThinkingBlock
-import com.example.ui.theme.CyanPrimaryDark
-import com.example.ui.theme.EmeraldSuccess
+import com.example.ui.theme.IndigoAccent
 import com.example.ui.theme.RoseError
-import com.example.ui.theme.Slate700
-import com.example.ui.theme.Slate800
-import com.example.ui.theme.Slate900
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -118,6 +118,17 @@ fun ChatScreen(
     var activeViewerFile by remember { mutableStateOf<FileArtifactEntity?>(null) }
     var pendingDownloadFile by remember { mutableStateOf<FileArtifactEntity?>(null) }
     var pendingExportMarkdown by remember { mutableStateOf<String?>(null) }
+
+    // Request notification permission for background generation on Android 13+
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { _ -> }
+
+    LaunchedEffect(Unit) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
 
     // SAF Create Document for File Downloads
     val downloadLauncher = rememberLauncherForActivityResult(
@@ -227,8 +238,9 @@ fun ChatScreen(
                         items(filteredThreads, key = { it.id }) { thread ->
                             val isSelected = thread.id == activeThreadId
                             Surface(
-                                shape = RoundedCornerShape(8.dp),
+                                shape = RoundedCornerShape(10.dp),
                                 color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                                border = if (isSelected) androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)) else null,
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(vertical = 2.dp)
@@ -285,7 +297,7 @@ fun ChatScreen(
                     ) {
                         Icon(Icons.Default.Settings, contentDescription = null)
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Nastavení")
+                        Text("Nastavení & Témata")
                     }
                 }
             }
@@ -302,16 +314,34 @@ fun ChatScreen(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(8.dp))
                                     .clickable { modelDropdownExpanded = true }
-                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                                    .padding(horizontal = 6.dp, vertical = 4.dp)
                             ) {
                                 Column {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(
+                                            text = settings.activeModelId,
+                                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                                            maxLines = 1
+                                        )
+                                        if (settings.thinkingBudget > 0) {
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Surface(
+                                                shape = RoundedCornerShape(4.dp),
+                                                color = IndigoAccent.copy(alpha = 0.2f),
+                                                border = androidx.compose.foundation.BorderStroke(1.dp, IndigoAccent.copy(alpha = 0.6f))
+                                            ) {
+                                                Text(
+                                                    text = "T:${settings.thinkingBudget}",
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = IndigoAccent,
+                                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                )
+                                            }
+                                        }
+                                    }
                                     Text(
-                                        text = settings.activeModelId,
-                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                                        maxLines = 1
-                                    )
-                                    Text(
-                                        text = "Region: ${settings.region}",
+                                        text = "${settings.region} • ${settings.appTheme}",
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -411,7 +441,7 @@ fun ChatScreen(
                         )
                     }
 
-                    // Live Streaming Card
+                    // Live Streaming Card with HUD
                     if (streamState.isStreaming) {
                         item {
                             Column(
@@ -419,26 +449,53 @@ fun ChatScreen(
                                     .fillMaxWidth()
                                     .padding(horizontal = 12.dp, vertical = 6.dp)
                             ) {
+                                // Live Streaming HUD header
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp)
+                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp)
                                 ) {
                                     CircularProgressIndicator(
-                                        modifier = Modifier.size(12.dp),
+                                        modifier = Modifier.size(14.dp),
                                         strokeWidth = 2.dp,
-                                        color = MaterialTheme.colorScheme.primary
+                                        color = if (streamState.isThinkingStage) IndigoAccent else MaterialTheme.colorScheme.primary
                                     )
-                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
                                     Text(
-                                        text = if (streamState.autoContinuing) "Auto-Continue: Navazuji generování..." else "Vertex AI generuje...",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.primary
+                                        text = if (streamState.autoContinuing) {
+                                            "Auto-Continue: Navazuji psaní kódu..."
+                                        } else if (streamState.isThinkingStage) {
+                                            "🧠 Model plánuje myšlenkový proces (Thinking)..."
+                                        } else {
+                                            "⚡ Vertex AI generuje kód..."
+                                        },
+                                        style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                        color = if (streamState.isThinkingStage) IndigoAccent else MaterialTheme.colorScheme.primary
                                     )
+
+                                    if (streamState.files.isNotEmpty()) {
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Surface(
+                                            shape = RoundedCornerShape(4.dp),
+                                            color = MaterialTheme.colorScheme.primaryContainer
+                                        ) {
+                                            Text(
+                                                text = "${streamState.files.sumOf { it.lineCount }} řádků",
+                                                fontFamily = FontFamily.Monospace,
+                                                fontSize = 11.sp,
+                                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
                                 }
 
                                 Card(
                                     shape = RoundedCornerShape(16.dp),
                                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                                    border = androidx.compose.foundation.BorderStroke(
+                                        1.dp,
+                                        if (streamState.isThinkingStage) IndigoAccent.copy(alpha = 0.5f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
+                                    ),
                                     modifier = Modifier.fillMaxWidth()
                                 ) {
                                     Column(modifier = Modifier.padding(14.dp)) {
@@ -497,6 +554,7 @@ fun ChatScreen(
                 Surface(
                     color = MaterialTheme.colorScheme.surface,
                     tonalElevation = 3.dp,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.navigationBarsPadding()) {
@@ -509,7 +567,7 @@ fun ChatScreen(
                             OutlinedTextField(
                                 value = inputText,
                                 onValueChange = { inputText = it },
-                                placeholder = { Text("Napište zprávu pro Vertex AI...") },
+                                placeholder = { Text("Napište zadání pro Vertex AI...") },
                                 maxLines = 6,
                                 modifier = Modifier
                                     .weight(1f)

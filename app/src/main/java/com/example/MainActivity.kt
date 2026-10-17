@@ -13,6 +13,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.ui.chat.ChatScreen
 import com.example.ui.chat.ChatViewModel
@@ -29,9 +30,12 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            VertexAiTheme {
+            val viewModel: ChatViewModel = viewModel()
+            val settings by viewModel.settings.collectAsStateWithLifecycle()
+
+            VertexAiTheme(appTheme = settings.appTheme) {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    VertexAiApp()
+                    VertexAiApp(viewModel = viewModel)
                 }
             }
         }
@@ -39,7 +43,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun VertexAiApp(viewModel: ChatViewModel = viewModel()) {
+fun VertexAiApp(viewModel: ChatViewModel) {
     var currentScreen by remember { mutableStateOf(AppScreen.CHAT) }
 
     when (currentScreen) {

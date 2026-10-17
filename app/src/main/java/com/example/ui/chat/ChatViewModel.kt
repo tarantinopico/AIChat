@@ -22,6 +22,7 @@ import com.example.data.remote.dto.VertexUsageMetadata
 import com.example.domain.util.ExtractedFile
 import com.example.domain.util.MarkdownExporter
 import com.example.domain.util.StreamFileExtractor
+import com.example.service.GenerationForegroundService
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -43,7 +44,8 @@ data class ActiveStreamState(
     val thinkingContent: String = "",
     val files: List<ExtractedFile> = emptyList(),
     val usageMetadata: VertexUsageMetadata? = null,
-    val autoContinuing: Boolean = false
+    val autoContinuing: Boolean = false,
+    val isThinkingStage: Boolean = false
 )
 
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
@@ -173,6 +175,18 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun updateAppTheme(theme: String) {
+        viewModelScope.launch {
+            settingsDataStore.updateAppTheme(theme)
+        }
+    }
+
+    fun updateThinkingConfig(budget: Int, preset: String) {
+        viewModelScope.launch {
+            settingsDataStore.updateThinkingConfig(budget, preset)
+        }
+    }
+
     fun toggleMessagePin(messageId: Long, currentPin: Boolean) {
         viewModelScope.launch(Dispatchers.IO) {
             chatDao.updateMessagePinStatus(messageId, !currentPin)
@@ -225,6 +239,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun stopGeneration() {
         activeGenerationJob?.cancel()
         activeGenerationJob = null
+        GenerationForegroundService.stopService(getApplication())
         finalizeStreaming(isCancelled = true)
     }
 
@@ -321,7 +336,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             temperature = currentSettings.temperature,
             topP = currentSettings.topP,
             topK = currentSettings.topK,
-            maxOutputTokens = currentSettings.maxOutputTokens
+            maxOutputTokens = currentSettings.maxOutputTokens,
+            thinkingBudget = currentSettings.thinkingBudget
         )
         val safety = if (currentSettings.isBlockNoneSafety) {
             VertexSafetySetting.createBlockNoneList()
@@ -332,8 +348,12 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         _activeStreamState.value = ActiveStreamState(
             isStreaming = true,
             streamingThreadId = threadId,
-            autoContinuing = continuePrompt != null
+            autoContinuing = continuePrompt != null,
+            isThinkingStage = currentSettings.thinkingBudget > 0
         )
+
+        // Start Foreground Service for continuous background processing & notifications
+        GenerationForegroundService.startService(getApplication(), currentSettings.activeModelId)
 
         activeGenerationJob?.cancel()
         activeGenerationJob = viewModelScope.launch(Dispatchers.IO) {
@@ -363,11 +383,30 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                         }
 
                         val parsed = StreamFileExtractor.parse(rawAccumulatedText.toString())
+                        val isStillThinking = thinkingAccumulator.isNotEmpty() && rawAccumulatedText.isEmpty()
+
                         _activeStreamState.value = _activeStreamState.value.copy(
                             textContent = parsed.cleanText,
                             thinkingContent = thinkingAccumulator.toString(),
                             files = parsed.files,
-                            usageMetadata = lastUsageMetadata
+                            usageMetadata = lastUsageMetadata,
+                            isThinkingStage = isStillThinking
+                        )
+
+                        // Update Notification Progress
+                        val statusText = if (isStillThinking) {
+                            "Přemýšlím (Thinking)..."
+                        } else if (parsed.files.isNotEmpty()) {
+                            "Píši soubor: ${parsed.files.last().fileName}"
+                        } else {
+                            "Generuji odpověď..."
+                        }
+                        val lineCount = parsed.files.sumOf { it.lineCount }
+                        GenerationForegroundService.updateProgress(
+                            getApplication(),
+                            statusText,
+                            lineCount,
+                            parsed.files.size
                         )
                     }
                 } else {
@@ -424,6 +463,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
                 _activeStreamState.value = ActiveStreamState(isStreaming = false)
 
+                // Foreground Service Completion Notification
+                val totalLines = finalParsed.files.sumOf { it.lineCount }
+                GenerationForegroundService.completeService(getApplication(), finalParsed.files.size, totalLines)
+
                 // Handle Auto-Continue if finishReason was MAX_TOKENS
                 if (lastFinishReason == "MAX_TOKENS" && currentSettings.autoContinueMode == "AUTO") {
                     triggerModelGeneration(
@@ -433,6 +476,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 }
 
             } catch (e: Exception) {
+                GenerationForegroundService.stopService(getApplication())
                 val rawErrorJson = (e as? VertexApiException)?.rawErrorJson
                 val errorMsg = ChatMessageEntity(
                     threadId = threadId,

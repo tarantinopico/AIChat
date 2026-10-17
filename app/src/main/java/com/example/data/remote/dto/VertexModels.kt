@@ -30,7 +30,8 @@ data class VertexGenerationConfig(
     val temperature: Float = 0.7f,
     val topP: Float = 0.95f,
     val topK: Int = 40,
-    val maxOutputTokens: Int = 8192
+    val maxOutputTokens: Int = 8192,
+    val thinkingBudget: Int = 4096
 ) {
     fun toJson(): JSONObject {
         return JSONObject().apply {
@@ -38,6 +39,12 @@ data class VertexGenerationConfig(
             put("topP", topP)
             put("topK", topK)
             put("maxOutputTokens", maxOutputTokens)
+            if (thinkingBudget >= 0) {
+                val thinkingObj = JSONObject().apply {
+                    put("thinkingBudget", thinkingBudget)
+                }
+                put("thinkingConfig", thinkingObj)
+            }
         }
     }
 }

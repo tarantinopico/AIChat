@@ -11,6 +11,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -20,19 +22,23 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.NetworkCheck
 import androidx.compose.material.icons.filled.Paid
-import androidx.compose.material.icons.filled.ContentPaste
+import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Button
@@ -45,6 +51,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -61,14 +68,13 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -77,22 +83,25 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.data.auth.ServiceAccountAuthManager
 import com.example.ui.chat.ChatViewModel
 import com.example.ui.chat.components.ErrorDiagnosticCard
-import com.example.ui.theme.AmberWarning
+import com.example.ui.theme.AppThemeMode
+import com.example.ui.theme.CyberpunkNeonCyan
+import com.example.ui.theme.CyberpunkNeonPink
 import com.example.ui.theme.CyanPrimary
-import com.example.ui.theme.CyanPrimaryDark
+import com.example.ui.theme.EmeraldMint
+import com.example.ui.theme.EmeraldPrimary
 import com.example.ui.theme.EmeraldSuccess
+import com.example.ui.theme.IndigoAccent
+import com.example.ui.theme.ObsidianSilver
 import com.example.ui.theme.RoseError
-import com.example.ui.theme.Slate700
 import com.example.ui.theme.Slate800
 import com.example.ui.theme.Slate900
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import kotlin.math.max
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun SettingsScreen(
     viewModel: ChatViewModel,
@@ -158,10 +167,197 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
 
-            // --- SECTION 1: Service Account JSON ---
+            // --- SECTION 1: Barevná témata (Color Themes) ---
             Card(
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Palette, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Barevná témata",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "Vyberte si styl prostředí podle vašich preferencí a displeje:",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    val themes = listOf(
+                        AppThemeMode.SLATE to Pair(Color(0xFF0F172A), Color(0xFF38BDF8)),
+                        AppThemeMode.OBSIDIAN to Pair(Color(0xFF000000), ObsidianSilver),
+                        AppThemeMode.CYBERPUNK to Pair(Color(0xFF0A0612), CyberpunkNeonCyan),
+                        AppThemeMode.EMERALD to Pair(Color(0xFF04140D), EmeraldMint)
+                    )
+
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        themes.forEach { (themeMode, colors) ->
+                            val isSelected = settings.appTheme.equals(themeMode.name, ignoreCase = true)
+                            Surface(
+                                shape = RoundedCornerShape(10.dp),
+                                color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+                                border = androidx.compose.foundation.BorderStroke(
+                                    width = if (isSelected) 2.dp else 1.dp,
+                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { viewModel.updateAppTheme(themeMode.name) }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    // Theme color preview circles
+                                    Row(horizontalArrangement = Arrangement.spacedBy((-6).dp)) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(24.dp)
+                                                .clip(CircleShape)
+                                                .background(colors.first)
+                                                .border(1.dp, Color.White.copy(alpha = 0.3f), CircleShape)
+                                        )
+                                        Box(
+                                            modifier = Modifier
+                                                .size(24.dp)
+                                                .clip(CircleShape)
+                                                .background(colors.second)
+                                                .border(1.dp, Color.White.copy(alpha = 0.3f), CircleShape)
+                                        )
+                                    }
+
+                                    Spacer(modifier = Modifier.width(14.dp))
+
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = themeMode.displayName,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 14.sp
+                                        )
+                                        Text(
+                                            text = themeMode.description,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+
+                                    if (isSelected) {
+                                        Icon(
+                                            Icons.Default.CheckCircle,
+                                            contentDescription = "Aktivní",
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // --- SECTION 2: Úroveň Thinking & Rozpočet ---
+            Card(
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.Psychology, contentDescription = null, tint = IndigoAccent)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Úroveň Thinking (Uvažování modelu)",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "Konfigurace 'thinkingBudget' pro Gemini 2.5 / 2.0 uvažovací modely. Určuje maximální počet tokenů, které model věnuje vnitřnímu plánování.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // Preset Chips
+                    val presets = listOf(
+                        Triple("OFF", "Vypnuto (0)", 0),
+                        Triple("LOW", "Nízká (1k)", 1024),
+                        Triple("MEDIUM", "Střední (4k)", 4096),
+                        Triple("HIGH", "Vysoká (16k)", 16384),
+                        Triple("MAX", "Max (32k)", 32768),
+                        Triple("CUSTOM", "Vlastní", settings.thinkingBudget)
+                    )
+
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        presets.forEach { (presetKey, label, budget) ->
+                            val isSelected = settings.thinkingPreset == presetKey
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = {
+                                    viewModel.updateThinkingConfig(budget, presetKey)
+                                },
+                                label = { Text(label, fontSize = 12.sp) },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = IndigoAccent,
+                                    selectedLabelColor = Color.White
+                                )
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Slider for granular budget
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = if (settings.thinkingBudget == 0) "Thinking: Vypnuto (0 tokenů)" else "Rozpočet: ${settings.thinkingBudget} tokenů",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                            color = if (settings.thinkingBudget == 0) MaterialTheme.colorScheme.onSurfaceVariant else IndigoAccent
+                        )
+                        Text(
+                            text = if (settings.thinkingBudget == 0) "Rychlá odezva" else "Hloubková analýza",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    Slider(
+                        value = settings.thinkingBudget.toFloat(),
+                        onValueChange = { newVal ->
+                            viewModel.updateThinkingConfig(newVal.toInt(), "CUSTOM")
+                        },
+                        valueRange = 0f..65536f,
+                        steps = 15
+                    )
+                }
+            }
+
+            // --- SECTION 3: Service Account JSON ---
+            Card(
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -309,10 +505,11 @@ fun SettingsScreen(
                 }
             }
 
-            // --- SECTION 2: Region & Model Management ---
+            // --- SECTION 4: Region & Model Management ---
             Card(
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -481,10 +678,11 @@ fun SettingsScreen(
                 }
             }
 
-            // --- SECTION 3: System Instructions & Generation Parameters ---
+            // --- SECTION 5: System Instructions & Generation Parameters ---
             Card(
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
@@ -580,10 +778,11 @@ fun SettingsScreen(
                 }
             }
 
-            // --- SECTION 4: Toggles (Streaming, Safety, Auto-Continue) ---
+            // --- SECTION 6: Toggles (Streaming, Safety, Auto-Continue) ---
             Card(
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
@@ -678,10 +877,11 @@ fun SettingsScreen(
                 }
             }
 
-            // --- SECTION 5: $300 Free Trial Credit Dashboard ---
+            // --- SECTION 7: $300 Free Trial Credit Dashboard ---
             Card(
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                shape = RoundedCornerShape(14.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -702,8 +902,9 @@ fun SettingsScreen(
                     val progressRatio = (estimatedCost / settings.initialCreditUsd).toFloat().coerceIn(0f, 1f)
 
                     Surface(
-                        shape = RoundedCornerShape(8.dp),
+                        shape = RoundedCornerShape(10.dp),
                         color = MaterialTheme.colorScheme.surface,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(modifier = Modifier.padding(14.dp)) {
@@ -723,9 +924,10 @@ fun SettingsScreen(
                                 progress = { progressRatio },
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(8.dp),
-                                color = if (progressRatio > 0.8f) RoseError else CyanPrimary,
-                                trackColor = Slate800
+                                    .height(8.dp)
+                                    .clip(RoundedCornerShape(4.dp)),
+                                color = if (progressRatio > 0.8f) RoseError else MaterialTheme.colorScheme.primary,
+                                trackColor = MaterialTheme.colorScheme.surfaceVariant
                             )
                             Spacer(modifier = Modifier.height(10.dp))
                             Text(
@@ -749,14 +951,15 @@ fun SettingsScreen(
                         Spacer(modifier = Modifier.height(6.dp))
                         modelStats.forEach { stat ->
                             Surface(
-                                shape = RoundedCornerShape(6.dp),
+                                shape = RoundedCornerShape(8.dp),
                                 color = MaterialTheme.colorScheme.surface,
+                                border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(vertical = 2.dp)
                             ) {
                                 Row(
-                                    modifier = Modifier.padding(8.dp),
+                                    modifier = Modifier.padding(10.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
                                     Text(stat.modelId, fontSize = 12.sp, fontWeight = FontWeight.Bold)
