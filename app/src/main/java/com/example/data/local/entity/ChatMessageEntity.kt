@@ -33,5 +33,7 @@ data class ChatMessageEntity(
     val isError: Boolean = false,
     val errorSummary: String? = null,
     val rawErrorJson: String? = null,
+    val rawTextContent: String? = null,
+    val continuationCount: Int = 0,
     val createdAt: Long = System.currentTimeMillis()
 )

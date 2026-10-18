@@ -769,14 +769,15 @@ fun ChatScreen(
                                                 Spacer(modifier = Modifier.height(6.dp))
                                                 streamState.files.forEach { file ->
                                                     val tempEntity = FileArtifactEntity(
-                                                        messageId = 0,
-                                                        threadId = 0,
+                                                        messageId = streamState.targetMessageId ?: 0,
+                                                        threadId = streamState.streamingThreadId ?: 0,
                                                         fileName = file.fileName,
                                                         language = file.language,
                                                         mimeType = file.mimeType,
                                                         content = file.content,
                                                         lineCount = file.lineCount,
-                                                        sizeBytes = file.sizeBytes
+                                                        sizeBytes = file.sizeBytes,
+                                                        isComplete = file.isComplete
                                                     )
                                                     FileArtifactCard(
                                                         file = tempEntity,
@@ -784,7 +785,8 @@ fun ChatScreen(
                                                         onDownload = {
                                                             pendingDownloadFile = tempEntity
                                                             downloadLauncher.launch(file.fileName)
-                                                        }
+                                                        },
+                                                        onContinue = null
                                                     )
                                                     Spacer(modifier = Modifier.height(6.dp))
                                                 }
@@ -1103,13 +1105,39 @@ fun ChatScreen(
     }
 
     // 5. Fullscreen File Artifact Viewer Dialog
-    if (activeViewerFile != null) {
+    val liveViewerFile = remember(activeViewerFile, messagesWithFiles, streamState.files) {
+        val active = activeViewerFile ?: return@remember null
+        if (streamState.isStreaming) {
+            val streamingMatch = streamState.files.find { it.fileName == active.fileName }
+            if (streamingMatch != null) {
+                return@remember active.copy(
+                    content = streamingMatch.content,
+                    lineCount = streamingMatch.lineCount,
+                    sizeBytes = streamingMatch.sizeBytes,
+                    isComplete = streamingMatch.isComplete
+                )
+            }
+        }
+        for ((_, files) in messagesWithFiles) {
+            val dbMatch = files.find { it.id == active.id || (active.id == 0L && it.fileName == active.fileName) }
+            if (dbMatch != null) return@remember dbMatch
+        }
+        active
+    }
+
+    if (liveViewerFile != null) {
         FileArtifactViewerDialog(
-            file = activeViewerFile!!,
+            file = liveViewerFile,
             onDismiss = { activeViewerFile = null },
             onDownload = { fileToDownload ->
                 pendingDownloadFile = fileToDownload
                 downloadLauncher.launch(fileToDownload.fileName)
+            },
+            onContinueGeneration = { msgId ->
+                val targetId = if (msgId != 0L) msgId else liveViewerFile.messageId
+                if (targetId != 0L) {
+                    viewModel.continueGeneration(targetId)
+                }
             }
         )
     }

@@ -1046,41 +1046,79 @@ fun SettingsScreen(
                     }
 
                     Spacer(modifier = Modifier.height(14.dp))
-                    Text("Režim dlouhého kódu (Auto-Continue):", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                    Spacer(modifier = Modifier.height(6.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        FilterChip(
-                            selected = settings.autoContinueMode == "AUTO",
-                            onClick = {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Automatické pokračování (Auto-Continue)", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                            Text(
+                                "Při dosažení limitu délky tokenů (MAX_TOKENS) automaticky naváže v psaní přímo v artefaktu",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = settings.autoContinueMode == "AUTO",
+                            onCheckedChange = { isAuto ->
                                 scope.launch {
-                                    viewModel.settingsDataStore.updateToggles(
-                                        isStreaming = settings.isStreaming,
-                                        isBlockNoneSafety = settings.isBlockNoneSafety,
-                                        autoContinueMode = "AUTO"
+                                    viewModel.settingsDataStore.updateAutoContinueSettings(
+                                        autoContinueMode = if (isAuto) "AUTO" else "MANUAL",
+                                        maxAutoContinueSteps = settings.maxAutoContinueSteps
                                     )
                                 }
-                            },
-                            label = { Text("Automaticky navázat", fontSize = 12.sp) },
-                            modifier = Modifier.weight(1f)
-                        )
-                        FilterChip(
-                            selected = settings.autoContinueMode == "MANUAL",
-                            onClick = {
-                                scope.launch {
-                                    viewModel.settingsDataStore.updateToggles(
-                                        isStreaming = settings.isStreaming,
-                                        isBlockNoneSafety = settings.isBlockNoneSafety,
-                                        autoContinueMode = "MANUAL"
-                                    )
-                                }
-                            },
-                            label = { Text("Tlačítko pokračovat", fontSize = 12.sp) },
-                            modifier = Modifier.weight(1f)
+                            }
                         )
                     }
+
+                    AnimatedVisibility(visible = settings.autoContinueMode == "AUTO") {
+                        Column(modifier = Modifier.padding(top = 10.dp)) {
+                            Text(
+                                text = "Maximální počet automatických navázání:",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                listOf(1, 2, 3, 5).forEach { steps ->
+                                    FilterChip(
+                                        selected = settings.maxAutoContinueSteps == steps,
+                                        onClick = {
+                                            scope.launch {
+                                                viewModel.settingsDataStore.updateAutoContinueSettings(
+                                                    autoContinueMode = "AUTO",
+                                                    maxAutoContinueSteps = steps
+                                                )
+                                            }
+                                        },
+                                        label = {
+                                            Text(if (steps == 3) "3× (doporučeno)" else "$steps×", fontSize = 11.sp)
+                                        },
+                                        colors = FilterChipDefaults.filterChipColors(
+                                            selectedContainerColor = MaterialTheme.colorScheme.primary,
+                                            selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = if (settings.autoContinueMode == "AUTO") {
+                            "⚡ Auto-Continue je AKTIVNÍ: model automaticky dopíše kód do stejného souboru až ${settings.maxAutoContinueSteps}× za sebou."
+                        } else {
+                            "👆 Manuální režim: v chatu a v prohlížeči artefaktu se při limitu tokenů zobrazí tlačítko 'Pokračovat v kódu'."
+                        },
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.primary
+                    )
                 }
             }
 

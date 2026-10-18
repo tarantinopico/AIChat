@@ -34,6 +34,7 @@ data class AppSettings(
     val isStreaming: Boolean = true,
     val isBlockNoneSafety: Boolean = true,
     val autoContinueMode: String = "AUTO", // "AUTO" or "MANUAL"
+    val maxAutoContinueSteps: Int = 3,
     val costPerMillionInputTokens: Double = 1.25,
     val costPerMillionOutputTokens: Double = 5.00,
     val initialCreditUsd: Double = 300.0,
@@ -75,6 +76,7 @@ class SettingsDataStore(private val context: Context) {
         val IS_STREAMING = booleanPreferencesKey("is_streaming")
         val IS_BLOCK_NONE_SAFETY = booleanPreferencesKey("is_block_none_safety")
         val AUTO_CONTINUE_MODE = stringPreferencesKey("auto_continue_mode")
+        val MAX_AUTO_CONTINUE_STEPS = intPreferencesKey("max_auto_continue_steps")
         val COST_PER_MILLION_INPUT = doublePreferencesKey("cost_per_million_input")
         val COST_PER_MILLION_OUTPUT = doublePreferencesKey("cost_per_million_output")
         val INITIAL_CREDIT_USD = doublePreferencesKey("initial_credit_usd")
@@ -139,6 +141,7 @@ class SettingsDataStore(private val context: Context) {
             isStreaming = prefs[PreferencesKeys.IS_STREAMING] ?: true,
             isBlockNoneSafety = prefs[PreferencesKeys.IS_BLOCK_NONE_SAFETY] ?: true,
             autoContinueMode = prefs[PreferencesKeys.AUTO_CONTINUE_MODE] ?: "AUTO",
+            maxAutoContinueSteps = prefs[PreferencesKeys.MAX_AUTO_CONTINUE_STEPS] ?: 3,
             costPerMillionInputTokens = prefs[PreferencesKeys.COST_PER_MILLION_INPUT] ?: 1.25,
             costPerMillionOutputTokens = prefs[PreferencesKeys.COST_PER_MILLION_OUTPUT] ?: 5.00,
             initialCreditUsd = prefs[PreferencesKeys.INITIAL_CREDIT_USD] ?: 300.0,
@@ -313,12 +316,24 @@ class SettingsDataStore(private val context: Context) {
     suspend fun updateToggles(
         isStreaming: Boolean,
         isBlockNoneSafety: Boolean,
-        autoContinueMode: String
+        autoContinueMode: String,
+        maxAutoContinueSteps: Int = 3
     ) {
         context.dataStore.edit {
             it[PreferencesKeys.IS_STREAMING] = isStreaming
             it[PreferencesKeys.IS_BLOCK_NONE_SAFETY] = isBlockNoneSafety
             it[PreferencesKeys.AUTO_CONTINUE_MODE] = autoContinueMode
+            it[PreferencesKeys.MAX_AUTO_CONTINUE_STEPS] = maxAutoContinueSteps
+        }
+    }
+
+    suspend fun updateAutoContinueSettings(
+        autoContinueMode: String,
+        maxAutoContinueSteps: Int
+    ) {
+        context.dataStore.edit {
+            it[PreferencesKeys.AUTO_CONTINUE_MODE] = autoContinueMode
+            it[PreferencesKeys.MAX_AUTO_CONTINUE_STEPS] = maxAutoContinueSteps
         }
     }
 

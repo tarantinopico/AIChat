@@ -124,6 +124,21 @@ fun MessageItem(
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            if (!isUser && message.continuationCount > 0) {
+                Spacer(modifier = Modifier.width(6.dp))
+                Surface(
+                    shape = RoundedCornerShape(4.dp),
+                    color = CyanPrimaryDark.copy(alpha = 0.15f)
+                ) {
+                    Text(
+                        text = "Navázáno ${message.continuationCount}×",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = CyanPrimaryDark,
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                    )
+                }
+            }
         }
 
         // Main Message Card
@@ -169,9 +184,52 @@ fun MessageItem(
                         FileArtifactCard(
                             file = file,
                             onOpen = { onOpenFile(file) },
-                            onDownload = { onDownloadFile(file) }
+                            onDownload = { onDownloadFile(file) },
+                            onContinue = if (!file.isComplete) { { onContinueGeneration(message.id) } } else null
                         )
                         Spacer(modifier = Modifier.height(6.dp))
+                    }
+                }
+
+                // In-message limit banner if token limit was reached
+                if (message.finishReason == "MAX_TOKENS") {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = AmberWarning.copy(alpha = 0.12f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, AmberWarning.copy(alpha = 0.4f)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                Icon(
+                                    Icons.Default.ErrorOutline,
+                                    contentDescription = null,
+                                    tint = AmberWarning,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Dosažen limit tokenů (MAX_TOKENS).",
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                            Button(
+                                onClick = { onContinueGeneration(message.id) },
+                                colors = ButtonDefaults.buttonColors(containerColor = CyanPrimaryDark),
+                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                modifier = Modifier.height(28.dp)
+                            ) {
+                                Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Text("Pokračovat v kódu", fontSize = 11.sp)
+                            }
+                        }
                     }
                 }
 
@@ -277,7 +335,8 @@ fun MessageItem(
 fun FileArtifactCard(
     file: FileArtifactEntity,
     onOpen: () -> Unit,
-    onDownload: () -> Unit
+    onDownload: () -> Unit,
+    onContinue: (() -> Unit)? = null
 ) {
     val fileIcon = when (file.language.lowercase()) {
         "html", "htm" -> Icons.Default.Html
@@ -289,7 +348,10 @@ fun FileArtifactCard(
     Surface(
         shape = RoundedCornerShape(10.dp),
         color = MaterialTheme.colorScheme.surface,
-        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (!file.isComplete) AmberWarning.copy(alpha = 0.6f) else MaterialTheme.colorScheme.outlineVariant
+        ),
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
@@ -300,13 +362,13 @@ fun FileArtifactCard(
                 modifier = Modifier
                     .size(40.dp)
                     .clip(RoundedCornerShape(8.dp))
-                    .background(MaterialTheme.colorScheme.primaryContainer),
+                    .background(if (!file.isComplete) AmberWarning.copy(alpha = 0.15f) else MaterialTheme.colorScheme.primaryContainer),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     fileIcon,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
+                    tint = if (!file.isComplete) AmberWarning else MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(24.dp)
                 )
             }
@@ -320,14 +382,28 @@ fun FileArtifactCard(
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1
                 )
+                val statusText = if (!file.isComplete) " • ⚠️ Neúplný" else ""
                 Text(
-                    text = "${file.lineCount} řádků • ${(file.sizeBytes / 1024.0).let { String.format("%.1f", it) }} kB",
+                    text = "${file.lineCount} řádků • ${(file.sizeBytes / 1024.0).let { String.format("%.1f", it) }} kB$statusText",
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = if (!file.isComplete) AmberWarning else MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                if (onContinue != null) {
+                    Button(
+                        onClick = onContinue,
+                        colors = ButtonDefaults.buttonColors(containerColor = CyanPrimaryDark),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 6.dp),
+                        modifier = Modifier.height(34.dp)
+                    ) {
+                        Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(15.dp))
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text("Navázat", fontSize = 12.sp)
+                    }
+                }
+
                 Button(
                     onClick = onDownload,
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),

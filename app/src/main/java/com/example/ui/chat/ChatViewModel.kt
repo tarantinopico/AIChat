@@ -42,6 +42,7 @@ import kotlinx.coroutines.withContext
 data class ActiveStreamState(
     val isStreaming: Boolean = false,
     val streamingThreadId: Long? = null,
+    val targetMessageId: Long? = null,
     val textContent: String = "",
     val thinkingContent: String = "",
     val files: List<ExtractedFile> = emptyList(),
@@ -298,9 +299,34 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun continueGeneration(messageId: Long) {
         val threadId = _activeThreadId.value ?: return
         viewModelScope.launch(Dispatchers.IO) {
+            val targetMessage = chatDao.getMessageById(messageId) ?: return@launch
+            if (targetMessage.role != "model") return@launch
+
+            val existingFiles = chatDao.getFilesForMessageSync(messageId)
+            val priorRawText = targetMessage.rawTextContent ?: run {
+                if (existingFiles.isNotEmpty()) {
+                    val fileBlocks = existingFiles.joinToString("\n\n") { f ->
+                        val fence = if (f.isComplete) "```${f.language}\n${f.content}\n```" else "```${f.language}\n${f.content}"
+                        "// Filename: ${f.fileName}\n$fence"
+                    }
+                    if (targetMessage.cleanTextContent.isNotBlank()) "${targetMessage.cleanTextContent}\n\n$fileBlocks" else fileBlocks
+                } else {
+                    targetMessage.cleanTextContent
+                }
+            }
+
+            val isUnclosed = StreamFileExtractor.isLastBlockUnclosed(priorRawText)
+            val continuePrompt = if (isUnclosed) {
+                "Pokračuj v psaní kódu přesně od posledního znaku bez jakéhokoliv úvodního komentáře, bez nového otevírání bloku ``` (kódový blok je již otevřen) a bez opakování kódu. Dokonči kód a uzavři blok."
+            } else {
+                "Pokračuj v generování přesně tam, kde jsi skončil, bez úvodních komentářů a bez opakování."
+            }
+
             triggerModelGeneration(
                 threadId = threadId,
-                continuePrompt = "Pokračuj v psaní kódu přesně od posledního znaku bez úvodního komentáře a bez opakování"
+                continuePrompt = continuePrompt,
+                targetMessageId = messageId,
+                priorRawTextForTarget = priorRawText
             )
         }
     }
@@ -338,11 +364,16 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             chatDao.insertMessage(userMessage)
             chatDao.touchThread(threadId)
 
-            triggerModelGeneration(threadId, continuePrompt = null)
+            triggerModelGeneration(threadId = threadId, continuePrompt = null)
         }
     }
 
-    private suspend fun triggerModelGeneration(threadId: Long, continuePrompt: String?) {
+    private suspend fun triggerModelGeneration(
+        threadId: Long,
+        continuePrompt: String?,
+        targetMessageId: Long? = null,
+        priorRawTextForTarget: String? = null
+    ) {
         val currentSettings = settings.value
         val saJson = currentSettings.serviceAccountJson
 
@@ -361,11 +392,18 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         // Build conversation context
-        val dbMessages = chatDao.getMessagesForThreadSync(threadId)
+        val allDbMessages = chatDao.getMessagesForThreadSync(threadId)
         val contextLimit = currentSettings.contextLimit
 
-        val pinnedMessages = dbMessages.filter { it.isPinned }
-        val nonPinnedMessages = dbMessages.filter { !it.isPinned }
+        val messagesToConsider = if (targetMessageId != null) {
+            val targetIdx = allDbMessages.indexOfFirst { it.id == targetMessageId }
+            if (targetIdx != -1) allDbMessages.take(targetIdx + 1) else allDbMessages
+        } else {
+            allDbMessages
+        }
+
+        val pinnedMessages = messagesToConsider.filter { it.isPinned }
+        val nonPinnedMessages = messagesToConsider.filter { !it.isPinned }
         val recentNonPinned = nonPinnedMessages.takeLast(contextLimit)
 
         val finalContextList = (pinnedMessages + recentNonPinned)
@@ -375,19 +413,23 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         val vertexContents = mutableListOf<VertexContent>()
         for (msg in finalContextList) {
             if (msg.isError) continue
-            val parts = mutableListOf<VertexContentPart>()
 
-            val files = chatDao.getFilesForMessageSync(msg.id)
-            var fullText = msg.cleanTextContent
-            if (files.isNotEmpty()) {
-                val fileCodeBlocks = files.joinToString("\n\n") { f ->
-                    "// Filename: ${f.fileName}\n```${f.language}\n${f.content}\n```"
+            val fullText = if (msg.id == targetMessageId && !priorRawTextForTarget.isNullOrBlank()) {
+                priorRawTextForTarget
+            } else {
+                val files = chatDao.getFilesForMessageSync(msg.id)
+                var text = msg.cleanTextContent
+                if (files.isNotEmpty()) {
+                    val fileCodeBlocks = files.joinToString("\n\n") { f ->
+                        val fence = if (f.isComplete) "```${f.language}\n${f.content}\n```" else "```${f.language}\n${f.content}"
+                        "// Filename: ${f.fileName}\n$fence"
+                    }
+                    text = if (text.isNotBlank()) "$text\n\n$fileCodeBlocks" else fileCodeBlocks
                 }
-                fullText = if (fullText.isNotBlank()) "$fullText\n\n$fileCodeBlocks" else fileCodeBlocks
+                text
             }
 
-            parts.add(VertexContentPart(fullText))
-            vertexContents.add(VertexContent(role = msg.role, parts = parts))
+            vertexContents.add(VertexContent(role = msg.role, parts = listOf(VertexContentPart(fullText))))
         }
 
         if (!continuePrompt.isNullOrBlank()) {
@@ -437,6 +479,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         _activeStreamState.value = ActiveStreamState(
             isStreaming = true,
             streamingThreadId = threadId,
+            targetMessageId = targetMessageId,
             autoContinuing = continuePrompt != null,
             isThinkingStage = isThinkingEffective
         )
@@ -471,7 +514,13 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                             lastUsageMetadata = chunk.usageMetadata
                         }
 
-                        val parsed = StreamFileExtractor.parse(rawAccumulatedText.toString())
+                        val currentMergedText = if (targetMessageId != null && priorRawTextForTarget != null) {
+                            StreamFileExtractor.mergeRawText(priorRawTextForTarget, rawAccumulatedText.toString())
+                        } else {
+                            rawAccumulatedText.toString()
+                        }
+
+                        val parsed = StreamFileExtractor.parse(currentMergedText)
                         val isStillThinking = thinkingAccumulator.isNotEmpty() && rawAccumulatedText.isEmpty()
 
                         _activeStreamState.value = _activeStreamState.value.copy(
@@ -484,6 +533,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
                         val statusText = if (isStillThinking) {
                             "Přemýšlím (Thinking)..."
+                        } else if (targetMessageId != null) {
+                            if (parsed.files.isNotEmpty()) "Navazuji v souboru: ${parsed.files.last().fileName}" else "Pokračuji v generování..."
                         } else if (parsed.files.isNotEmpty()) {
                             "Píši soubor: ${parsed.files.last().fileName}"
                         } else {
@@ -518,46 +569,108 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
 
-                // Finalize and save message + files
-                val finalParsed = StreamFileExtractor.parse(rawAccumulatedText.toString())
-                val modelMessage = ChatMessageEntity(
-                    threadId = threadId,
-                    role = "model",
-                    cleanTextContent = finalParsed.cleanText,
-                    thinkingContent = thinkingAccumulator.toString().takeIf { it.isNotBlank() },
-                    promptTokens = lastUsageMetadata?.promptTokenCount ?: 0,
-                    candidateTokens = lastUsageMetadata?.candidatesTokenCount ?: 0,
-                    thinkingTokens = lastUsageMetadata?.thinkingTokenCount ?: 0,
-                    modelId = currentSettings.activeModelId,
-                    finishReason = lastFinishReason
-                )
-                val messageId = chatDao.insertMessage(modelMessage)
-                chatDao.touchThread(threadId)
+                if (targetMessageId != null) {
+                    // In-place artifact and message continuation
+                    val finalMergedText = StreamFileExtractor.mergeRawText(priorRawTextForTarget ?: "", rawAccumulatedText.toString())
+                    val finalParsed = StreamFileExtractor.parse(finalMergedText)
+                    val targetMsg = chatDao.getMessageById(targetMessageId)
 
-                for (file in finalParsed.files) {
-                    val fileEntity = FileArtifactEntity(
-                        messageId = messageId,
+                    if (targetMsg != null) {
+                        val mergedThinking = if (thinkingAccumulator.isNotBlank()) {
+                            if (!targetMsg.thinkingContent.isNullOrBlank()) "${targetMsg.thinkingContent}\n\n${thinkingAccumulator}" else thinkingAccumulator.toString()
+                        } else {
+                            targetMsg.thinkingContent
+                        }
+
+                        val updatedCount = targetMsg.continuationCount + 1
+                        val updatedMsg = targetMsg.copy(
+                            cleanTextContent = finalParsed.cleanText,
+                            thinkingContent = mergedThinking,
+                            rawTextContent = finalMergedText,
+                            promptTokens = targetMsg.promptTokens + (lastUsageMetadata?.promptTokenCount ?: 0),
+                            candidateTokens = targetMsg.candidateTokens + (lastUsageMetadata?.candidatesTokenCount ?: 0),
+                            thinkingTokens = targetMsg.thinkingTokens + (lastUsageMetadata?.thinkingTokenCount ?: 0),
+                            finishReason = lastFinishReason,
+                            continuationCount = updatedCount
+                        )
+                        chatDao.updateMessage(updatedMsg)
+                        chatDao.touchThread(threadId)
+
+                        // In-place replace artifact files with updated merged files
+                        chatDao.deleteFilesForMessage(targetMessageId)
+                        for (file in finalParsed.files) {
+                            val fileEntity = FileArtifactEntity(
+                                messageId = targetMessageId,
+                                threadId = threadId,
+                                fileName = file.fileName,
+                                language = file.language,
+                                mimeType = file.mimeType,
+                                content = file.content,
+                                lineCount = file.lineCount,
+                                sizeBytes = file.sizeBytes,
+                                isComplete = file.isComplete
+                            )
+                            chatDao.insertFile(fileEntity)
+                        }
+
+                        _activeStreamState.value = ActiveStreamState(isStreaming = false)
+
+                        val totalLines = finalParsed.files.sumOf { it.lineCount }
+                        GenerationForegroundService.completeService(getApplication(), finalParsed.files.size, totalLines)
+
+                        // If limit reached again and auto-continue is active, chain continuation
+                        if (lastFinishReason == "MAX_TOKENS" && currentSettings.autoContinueMode == "AUTO") {
+                            if (updatedCount < currentSettings.maxAutoContinueSteps) {
+                                continueGeneration(targetMessageId)
+                            }
+                        }
+                    } else {
+                        _activeStreamState.value = ActiveStreamState(isStreaming = false)
+                    }
+                } else {
+                    // Standard fresh model response
+                    val finalParsed = StreamFileExtractor.parse(rawAccumulatedText.toString())
+                    val modelMessage = ChatMessageEntity(
                         threadId = threadId,
-                        fileName = file.fileName,
-                        language = file.language,
-                        mimeType = file.mimeType,
-                        content = file.content,
-                        lineCount = file.lineCount,
-                        sizeBytes = file.sizeBytes
+                        role = "model",
+                        cleanTextContent = finalParsed.cleanText,
+                        thinkingContent = thinkingAccumulator.toString().takeIf { it.isNotBlank() },
+                        promptTokens = lastUsageMetadata?.promptTokenCount ?: 0,
+                        candidateTokens = lastUsageMetadata?.candidatesTokenCount ?: 0,
+                        thinkingTokens = lastUsageMetadata?.thinkingTokenCount ?: 0,
+                        modelId = currentSettings.activeModelId,
+                        finishReason = lastFinishReason,
+                        rawTextContent = rawAccumulatedText.toString(),
+                        continuationCount = 0
                     )
-                    chatDao.insertFile(fileEntity)
-                }
+                    val messageId = chatDao.insertMessage(modelMessage)
+                    chatDao.touchThread(threadId)
 
-                _activeStreamState.value = ActiveStreamState(isStreaming = false)
+                    for (file in finalParsed.files) {
+                        val fileEntity = FileArtifactEntity(
+                            messageId = messageId,
+                            threadId = threadId,
+                            fileName = file.fileName,
+                            language = file.language,
+                            mimeType = file.mimeType,
+                            content = file.content,
+                            lineCount = file.lineCount,
+                            sizeBytes = file.sizeBytes,
+                            isComplete = file.isComplete
+                        )
+                        chatDao.insertFile(fileEntity)
+                    }
 
-                val totalLines = finalParsed.files.sumOf { it.lineCount }
-                GenerationForegroundService.completeService(getApplication(), finalParsed.files.size, totalLines)
+                    _activeStreamState.value = ActiveStreamState(isStreaming = false)
 
-                if (lastFinishReason == "MAX_TOKENS" && currentSettings.autoContinueMode == "AUTO") {
-                    triggerModelGeneration(
-                        threadId = threadId,
-                        continuePrompt = "Pokračuj v psaní kódu přesně od posledního znaku bez úvodního komentáře a bez opakování"
-                    )
+                    val totalLines = finalParsed.files.sumOf { it.lineCount }
+                    GenerationForegroundService.completeService(getApplication(), finalParsed.files.size, totalLines)
+
+                    if (lastFinishReason == "MAX_TOKENS" && currentSettings.autoContinueMode == "AUTO") {
+                        if (currentSettings.maxAutoContinueSteps > 0) {
+                            continueGeneration(messageId)
+                        }
+                    }
                 }
 
             } catch (e: Exception) {
@@ -581,9 +694,18 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private fun finalizeStreaming(isCancelled: Boolean) {
         val state = _activeStreamState.value
         val threadId = state.streamingThreadId ?: return
+        val targetMessageId = state.targetMessageId
 
         viewModelScope.launch(Dispatchers.IO) {
-            if (state.textContent.isNotBlank() || state.files.isNotEmpty()) {
+            if (targetMessageId != null) {
+                val target = chatDao.getMessageById(targetMessageId)
+                if (target != null) {
+                    val updated = target.copy(
+                        finishReason = if (isCancelled) "CANCELLED" else target.finishReason
+                    )
+                    chatDao.updateMessage(updated)
+                }
+            } else if (state.textContent.isNotBlank() || state.files.isNotEmpty()) {
                 val modelMessage = ChatMessageEntity(
                     threadId = threadId,
                     role = "model",
@@ -593,7 +715,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     candidateTokens = state.usageMetadata?.candidatesTokenCount ?: 0,
                     thinkingTokens = state.usageMetadata?.thinkingTokenCount ?: 0,
                     modelId = settings.value.activeModelId,
-                    finishReason = if (isCancelled) "CANCELLED" else null
+                    finishReason = if (isCancelled) "CANCELLED" else null,
+                    continuationCount = 0
                 )
                 val messageId = chatDao.insertMessage(modelMessage)
                 for (file in state.files) {
@@ -606,7 +729,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                             mimeType = file.mimeType,
                             content = file.content,
                             lineCount = file.lineCount,
-                            sizeBytes = file.sizeBytes
+                            sizeBytes = file.sizeBytes,
+                            isComplete = file.isComplete
                         )
                     )
                 }

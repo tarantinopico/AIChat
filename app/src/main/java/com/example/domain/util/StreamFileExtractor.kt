@@ -183,4 +183,61 @@ object StreamFileExtractor {
             else -> "text/plain"
         }
     }
+
+    fun isLastBlockUnclosed(rawText: String): Boolean {
+        var cursor = 0
+        var unclosed = false
+        while (cursor < rawText.length) {
+            val startIndex = rawText.indexOf(FENCE_START, cursor)
+            if (startIndex == -1) break
+            val lineEndIndex = rawText.indexOf('\n', startIndex + FENCE_START.length)
+            val codeStart = if (lineEndIndex == -1) rawText.length else lineEndIndex + 1
+            val closingIndex = rawText.indexOf(FENCE_START, codeStart)
+            if (closingIndex != -1) {
+                var nextCursor = closingIndex + FENCE_START.length
+                if (nextCursor < rawText.length && rawText[nextCursor] == '\n') nextCursor++
+                cursor = nextCursor
+            } else {
+                unclosed = true
+                break
+            }
+        }
+        return unclosed
+    }
+
+    fun mergeRawText(priorRawText: String, continuationText: String): String {
+        if (priorRawText.isBlank()) return continuationText
+        if (continuationText.isBlank()) return priorRawText
+
+        val isUnclosed = isLastBlockUnclosed(priorRawText)
+        if (isUnclosed) {
+            var cleanContinuation = continuationText
+
+            val simpleFenceMatch = """^\s*```[a-zA-Z0-9_\-]*[ \t]*\r?\n""".toRegex()
+            if (simpleFenceMatch.containsMatchIn(cleanContinuation)) {
+                cleanContinuation = cleanContinuation.replaceFirst(simpleFenceMatch, "")
+            } else if (cleanContinuation.trimStart().startsWith("```")) {
+                val afterFence = cleanContinuation.trimStart().removePrefix("```")
+                cleanContinuation = if (afterFence.contains('\n')) afterFence.substringAfter('\n') else ""
+            } else {
+                // If there are 2 or more fences, the first is a redundant opening fence following preamble
+                val fenceCount = "```".toRegex().findAll(cleanContinuation).count()
+                if (fenceCount >= 2) {
+                    val firstFenceIndex = cleanContinuation.indexOf("```")
+                    val fenceLineEnd = cleanContinuation.indexOf('\n', firstFenceIndex)
+                    if (fenceLineEnd != -1 && firstFenceIndex < 150) {
+                        cleanContinuation = cleanContinuation.substring(fenceLineEnd + 1)
+                    }
+                }
+            }
+
+            return priorRawText + cleanContinuation
+        } else {
+            return if (priorRawText.endsWith("\n")) {
+                priorRawText + continuationText.trimStart()
+            } else {
+                priorRawText + "\n\n" + continuationText.trimStart()
+            }
+        }
+    }
 }

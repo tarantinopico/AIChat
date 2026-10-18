@@ -34,5 +34,6 @@ data class FileArtifactEntity(
     val content: String,
     val lineCount: Int,
     val sizeBytes: Long,
+    val isComplete: Boolean = true,
     val createdAt: Long = System.currentTimeMillis()
 )

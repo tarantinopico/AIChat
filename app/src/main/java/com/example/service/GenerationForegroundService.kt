@@ -79,10 +79,15 @@ class GenerationForegroundService : Service {
 
     private lateinit var notificationManager: NotificationManager
     private var currentModelId: String = "Vertex AI"
+    private var wakeLock: android.os.PowerManager.WakeLock? = null
 
     override fun onCreate() {
         super.onCreate()
         notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        try {
+            val pm = getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+            wakeLock = pm.newWakeLock(android.os.PowerManager.PARTIAL_WAKE_LOCK, "VertexAI:GenerationServiceWakeLock")
+        } catch (_: Exception) {}
         createNotificationChannels()
     }
 
@@ -95,6 +100,12 @@ class GenerationForegroundService : Service {
             ACTION_START -> {
                 isRunning = true
                 currentModelId = intent.getStringExtra(EXTRA_MODEL_ID) ?: "Vertex AI"
+                try {
+                    if (wakeLock?.isHeld == false) {
+                        wakeLock?.acquire(15 * 60 * 1000L)
+                    }
+                } catch (_: Exception) {}
+
                 val notification = buildOngoingNotification(
                     status = "Inicializuji spojení s modelem...",
                     lineCount = 0,
@@ -124,12 +135,18 @@ class GenerationForegroundService : Service {
                 val lines = intent.getIntExtra(EXTRA_LINE_COUNT, 0)
                 showCompletionNotification(files, lines)
                 stopForeground(STOP_FOREGROUND_REMOVE)
+                try {
+                    if (wakeLock?.isHeld == true) wakeLock?.release()
+                } catch (_: Exception) {}
                 isRunning = false
                 stopSelf()
             }
 
             ACTION_STOP -> {
                 stopForeground(STOP_FOREGROUND_REMOVE)
+                try {
+                    if (wakeLock?.isHeld == true) wakeLock?.release()
+                } catch (_: Exception) {}
                 isRunning = false
                 stopSelf()
             }
@@ -139,6 +156,9 @@ class GenerationForegroundService : Service {
     }
 
     override fun onDestroy() {
+        try {
+            if (wakeLock?.isHeld == true) wakeLock?.release()
+        } catch (_: Exception) {}
         isRunning = false
         super.onDestroy()
     }

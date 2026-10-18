@@ -15,7 +15,7 @@ import com.example.data.local.entity.FileArtifactEntity
         ChatMessageEntity::class,
         FileArtifactEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

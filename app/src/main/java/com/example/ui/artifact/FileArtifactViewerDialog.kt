@@ -57,7 +57,13 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import com.example.data.local.entity.FileArtifactEntity
+import com.example.ui.theme.AmberWarning
 import com.example.ui.theme.CyanPrimaryDark
 import com.example.ui.theme.Slate700
 import com.example.ui.theme.Slate800
@@ -71,7 +77,8 @@ import com.example.ui.theme.Slate950
 fun FileArtifactViewerDialog(
     file: FileArtifactEntity,
     onDismiss: () -> Unit,
-    onDownload: (FileArtifactEntity) -> Unit
+    onDownload: (FileArtifactEntity) -> Unit,
+    onContinueGeneration: ((Long) -> Unit)? = null
 ) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
@@ -97,10 +104,11 @@ fun FileArtifactViewerDialog(
                                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                                 maxLines = 1
                             )
+                            val statusSuffix = if (!file.isComplete) " • ⚠️ NEÚPLNÝ SOUBOR" else ""
                             Text(
-                                text = "${file.language.uppercase()} • ${file.lineCount} řádků • ${(file.sizeBytes / 1024.0).let { String.format("%.1f", it) }} kB",
+                                text = "${file.language.uppercase()} • ${file.lineCount} řádků • ${(file.sizeBytes / 1024.0).let { String.format("%.1f", it) }} kB$statusSuffix",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = if (!file.isComplete) AmberWarning else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     },
@@ -110,6 +118,17 @@ fun FileArtifactViewerDialog(
                         }
                     },
                     actions = {
+                        if (!file.isComplete && onContinueGeneration != null) {
+                            Button(
+                                onClick = { onContinueGeneration(file.messageId) },
+                                colors = ButtonDefaults.buttonColors(containerColor = CyanPrimaryDark),
+                                modifier = Modifier.padding(end = 6.dp)
+                            ) {
+                                Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Pokračovat v kódu", fontSize = 12.sp)
+                            }
+                        }
                         IconButton(
                             onClick = {
                                 clipboardManager.setText(AnnotatedString(file.content))
@@ -139,6 +158,44 @@ fun FileArtifactViewerDialog(
                     .padding(paddingValues)
                     .background(MaterialTheme.colorScheme.background)
             ) {
+                if (!file.isComplete) {
+                    Surface(
+                        color = AmberWarning.copy(alpha = 0.15f),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 6.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, AmberWarning.copy(alpha = 0.5f))
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                                Icon(Icons.Default.Warning, contentDescription = null, tint = AmberWarning, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Soubor byl zastaven na limitu tokenů (MAX_TOKENS).",
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                            if (onContinueGeneration != null) {
+                                Button(
+                                    onClick = { onContinueGeneration(file.messageId) },
+                                    colors = ButtonDefaults.buttonColors(containerColor = CyanPrimaryDark),
+                                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                    modifier = Modifier.height(32.dp)
+                                ) {
+                                    Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Pokračovat v psaní", fontSize = 11.sp)
+                                }
+                            }
+                        }
+                    }
+                }
                 // Tab switcher for HTML/SVG
                 if (isWebOrSvg) {
                     Row(
