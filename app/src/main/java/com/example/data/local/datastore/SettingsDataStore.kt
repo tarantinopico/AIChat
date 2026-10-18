@@ -30,11 +30,12 @@ data class AppSettings(
     val topP: Float = 0.95f,
     val topK: Int = 40,
     val maxOutputTokens: Int = 8192,
-    val contextLimit: Int = 20,
+    val contextLimit: Int = 100,
+    val isUnlimitedContext: Boolean = false,
     val isStreaming: Boolean = true,
     val isBlockNoneSafety: Boolean = true,
     val autoContinueMode: String = "AUTO", // "AUTO" or "MANUAL"
-    val maxAutoContinueSteps: Int = 3,
+    val maxAutoContinueSteps: Int = 3, // 0 = Unlimited
     val costPerMillionInputTokens: Double = 1.25,
     val costPerMillionOutputTokens: Double = 5.00,
     val initialCreditUsd: Double = 300.0,
@@ -73,6 +74,7 @@ class SettingsDataStore(private val context: Context) {
         val TOP_K = intPreferencesKey("top_k")
         val MAX_OUTPUT_TOKENS = intPreferencesKey("max_output_tokens")
         val CONTEXT_LIMIT = intPreferencesKey("context_limit")
+        val IS_UNLIMITED_CONTEXT = booleanPreferencesKey("is_unlimited_context")
         val IS_STREAMING = booleanPreferencesKey("is_streaming")
         val IS_BLOCK_NONE_SAFETY = booleanPreferencesKey("is_block_none_safety")
         val AUTO_CONTINUE_MODE = stringPreferencesKey("auto_continue_mode")
@@ -137,7 +139,8 @@ class SettingsDataStore(private val context: Context) {
             topP = prefs[PreferencesKeys.TOP_P] ?: 0.95f,
             topK = prefs[PreferencesKeys.TOP_K] ?: 40,
             maxOutputTokens = prefs[PreferencesKeys.MAX_OUTPUT_TOKENS] ?: 8192,
-            contextLimit = prefs[PreferencesKeys.CONTEXT_LIMIT] ?: 20,
+            contextLimit = prefs[PreferencesKeys.CONTEXT_LIMIT] ?: 100,
+            isUnlimitedContext = prefs[PreferencesKeys.IS_UNLIMITED_CONTEXT] ?: false,
             isStreaming = prefs[PreferencesKeys.IS_STREAMING] ?: true,
             isBlockNoneSafety = prefs[PreferencesKeys.IS_BLOCK_NONE_SAFETY] ?: true,
             autoContinueMode = prefs[PreferencesKeys.AUTO_CONTINUE_MODE] ?: "AUTO",
@@ -309,6 +312,16 @@ class SettingsDataStore(private val context: Context) {
             it[PreferencesKeys.TOP_P] = topP
             it[PreferencesKeys.TOP_K] = topK
             it[PreferencesKeys.MAX_OUTPUT_TOKENS] = maxOutputTokens
+            it[PreferencesKeys.CONTEXT_LIMIT] = contextLimit
+        }
+    }
+
+    suspend fun updateContextSettings(
+        isUnlimitedContext: Boolean,
+        contextLimit: Int
+    ) {
+        context.dataStore.edit {
+            it[PreferencesKeys.IS_UNLIMITED_CONTEXT] = isUnlimitedContext
             it[PreferencesKeys.CONTEXT_LIMIT] = contextLimit
         }
     }

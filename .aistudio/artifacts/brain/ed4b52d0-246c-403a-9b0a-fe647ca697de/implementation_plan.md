@@ -1,109 +1,103 @@
-# Oprava pokračování v artefaktu, Automatické navazování v nastavení & Běh na pozadí
+# Neomezené opakování v artefaktu & Oprava / Rozšíření maximálního kontextu
 
-Komplexní řešení pro bezchybné pokračování generování kódu přímo v existujícím artefaktu (bez fragmentace zpráv a souborů), plné zpřístupnění a zdokonalení automatického pokračování v nastavení a zajištění nepřerušeného běhu na pozadí prostřednictvím Android Foreground Service.
+Tento plán řeší dvě klíčové oblasti: zpřístupnění volby **Neomezeně (∞)** pro automatické navazování kódu v artefaktu a zásadní rozšíření/opravu **maximálního kontextu konverzace** (posuvník až do 500 zpráv + režim celé historie bez ořezávání).
 
 ---
 
-## Uživatelský přehled & Klíčová rozhodnutí
+## Uživatelský přehled & Potvrzená rozhodnutí
 
 > [!IMPORTANT]
-> **Klíčové principy navrženého řešení:**
-> 1. **Jednolitý artefakt (Seamless Artifact Continuation)**: Při dosažení limitu `MAX_TOKENS` a spuštění pokračování (manuálně i automaticky) se nový text a kód plynule napojí do **stávajícího souboru v artefaktu** a původní zprávy, namísto vytváření rozbitých oddělených zpráv bez syntaxe.
-> 2. **Tlačítko pokračování přímo v prohlížeči artefaktu**: Uživatel může pokračovat nejen z bubliny v chatu, ale také přímo z dialogu prohlížeče souboru (`FileArtifactViewerDialog`).
-> 3. **Přehledné nastavení automatického pokračování**: V `SettingsScreen` bude velký jasný přepínač pro *Automatické pokračování při limitu tokenů* s volbou maximálního počtu navázání (1–5×), aby nedošlo k nekonečné smyčce.
-> 4. **Spolehlivý běh na pozadí**: Generování a navazování probíhá přes aplikační `CoroutineScope` a `GenerationForegroundService`, takže minimalizace aplikace, zhasnutí obrazovky nebo přepnutí do jiné aplikace proces nepřeruší.
+> **Klíčová rozhodnutí na základě vašich odpovědí:**
+> 1. **Neomezené automatické navazování (Auto-Continue)**:
+>    - K existujícím volbám (1×, 2×, 3×, 5×) přibude volba **`∞ Neomezeně`**.
+>    - Model bude automaticky pokračovat v dopisování souboru v artefaktu tak dlouho, dokud kód kompletně nedokončí (nebo dokud uživatel nestiskne tlačítko *Zastavit*).
+> 2. **Oprava a zásadní zvětšení kontextového limitu**:
+>    - Stávající posuvník (který měl strop pouhých 50 zpráv) bude rozšířen až do **500 zpráv** s rychlými čipy (20, 50, 100, 250, 500).
+>    - Navíc přibude přímý přepínač **„Neomezený kontext (celá historie konverzace)“**, který do Vertex AI pošle kompletní historii bez jakéhokoliv ořezávání (využívá obří 1M–2M tokenové okno Gemini 2.5 Pro).
 
 ---
 
-## 1. Přehled & Architektura řešení
+## 1. Architektura & Tok dat
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
 │                          UŽIVATELSKÉ ROZHRANÍ                         │
-│  ┌───────────────────────┐  ┌──────────────────────┐  ┌─────────────┐  │
-│  │ ChatScreen / Bubble   │  │ FileArtifactViewer   │  │ Settings    │  │
-│  │ [Pokračovat v psaní]  │  │ [Pokračovat v kódu]  │  │ Auto-cont.  │  │
-│  └───────────┬───────────┘  └──────────┬───────────┘  └──────┬──────┘  │
-└──────────────┼─────────────────────────┼─────────────────────┼─────────┘
-               │                         │                     │
-               ▼                         ▼                     ▼
+│  ┌──────────────────────────────────┐  ┌────────────────────────────┐  │
+│  │ SettingsScreen                   │  │ ChatScreen / HUD           │  │
+│  │ - Auto-Continue: [1×, 3×, 5×, ∞] │  │ - Běžící navazování (#3)   │  │
+│  │ - Kontext: [Celá historie / 500] │  │ - Stop tlačítko            │  │
+│  └──────────────────┬───────────────┘  └─────────────┬──────────────┘  │
+└─────────────────────┼────────────────────────────────┼─────────────────┘
+                      │                                │
+                      ▼                                ▼
 ┌────────────────────────────────────────────────────────────────────────┐
-│                         ChatViewModel & Repository                     │
-│  - continuesInTargetMessage(targetMessageId, targetFileId)             │
-│  - čte Settings: autoContinueEnabled, maxContinuations                 │
-│  - řídí počet navázání (continuationCount <= maxContinuations)         │
-└──────────────────┬─────────────────────────────────┬───────────────────┘
-                   │                                 │
-                   ▼                                 ▼
-┌───────────────────────────────────┐  ┌─────────────────────────────────┐
-│   GenerationForegroundService     │  │        StreamFileExtractor      │
-│  - NOTIFICATION s reálným stavem │  │  - Inteligentní slučování       │
-│  - Zajišťuje WAKE / běh na pozadí │  │    neuzavřených code-blocků     │
-│  - Notifikace o dokončení         │  │  - Plynulý append do souboru    │
-└───────────────────────────────────┘  └─────────────────────────────────┘
+│                        ChatViewModel & DataStore                       │
+│  - maxAutoContinueSteps = 0 (reprezentuje ∞ Neomezeně)                 │
+│  - isUnlimitedContext = true OR contextLimit = 5..500                  │
+│  - Sestavení kontextu: celá historie vlákna se všemi artefakty        │
+└─────────────────────────────────────┬──────────────────────────────────┘
+                                      │
+                                      ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│                      Vertex AI Gemini API Klient                       │
+│  - Odesílá kompletní kontext bez předčasného ořezávání                │
+│  - Automatické navazování běží do uzavření kódu či ručního stopu       │
+└────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
 ## 2. Uživatelská zkušenost & Vizuální design (UX/UI)
 
-1. **Plynulé navázání v bublině zprávy**:
-   - Pokud model narazí na `MAX_TOKENS`, zobrazí se elegantní informační lišta: *"Kód byl zastaven z důvodu limitu tokenů"*.
-   - Vedle je výrazné tlačítko *"Pokračovat v kódu"* se šipkou a ikonou souboru.
-   - Po kliknutí se nespustí tvorba nové zprávy, nýbrž se přímo v této zprávě a v jejím souboru začne v reálném čase streamovat doplňovaný kód.
-   - U zprávy se zobrazí jemný štítek: *"Pokračováno (1×)"*.
+1. **Sekce Nastavení parametrů (`SettingsScreen`)**:
+   - **Karta Kontextového limitu**:
+     - Hlavní přepínač: *„Neomezený kontext (všechny zprávy vlákna)“*
+     - Vysvětlivka: *„Vertex AI modely Gemini 1.5 a 2.5 podporují kontext 1 až 2 miliony tokenů. V tomto režimu model nezapomene žádný kód ani zprávu z celého vlákna.“*
+     - Pokud je přepínač vypnutý: plynulý posuvník od 5 do 500 zpráv s rychlými čipy: `[20] [50] [100] [250] [500]`.
+     - Živý indikátor aktuálního nastavení: *„Aktivní limit: 500 zpráv v kontextu“* resp. *„Aktivní: Kompletní historie vlákna (neomezeně)“*.
 
-2. **Prohlížeč artefaktu (`FileArtifactViewerDialog`)**:
-   - Pokud je artefakt neúplný (`isComplete == false`), na spodní liště dialogu se vedle tlačítek *"Kopírovat"* a *"Zavřít"* zobrazí prominentní tlačítko:
-     `[▶ Pokračovat v generování souboru]`.
-   - Během generování uživatel přímo v prohlížeči vidí, jak přibývají nové řádky kódu.
+2. **Sekce Automatického pokračování (`SettingsScreen`)**:
+   - Vylepšená lišta s čipy pro počet navázání:
+     `[1×] [2×] [3×] [5×] [∞ Neomezeně]`
+   - Výrazné vizuální potvrzení stavu:
+     *„⚡ Auto-Continue: Model bude navazovat v artefaktu bez omezení až do úplného dokončení kódu.“*
 
-3. **Nastavení automatického pokračování (`SettingsScreen`)**:
-   - Nová přehledná karta v sekci *Přepínače chování*:
-     - **Hlavní přepínač**: *Automaticky navazovat neúplný kód (Auto-Continue)*
-     - **Vysvětlivka**: *"Při vyčerpání maximálního počtu tokenů automaticky vyzve model k pokračování v psaní otevřeného souboru."*
-     - **Volba limitu opakování**: Rychlé čipy pro max počet automatických navázání: `1×`, `2×`, `3×`, `5×`.
-
-4. **Běh a notifikace na pozadí**:
-   - Probíhající generování a pokračování zobrazuje průběžnou notifikaci v systému Android (Foreground Service).
-   - Text notifikace: *"Generuji soubor: MainActivity.kt (řádek 145...)"*.
-   - Po dokončení se zobrazí notifikace *"Kód byl úspěšně vygenerován (celkem 320 řádků)"*.
+3. **Indikace v chatu během neomezeného navazování**:
+   - Informační badge a HUD: *„Auto-Continue: Navázáno 4× (režim Neomezeně)...“*
+   - Vždy dostupné výrazné červené tlačítko **„Zastavit“** v horní stavové liště i v trvalé notifikaci na pozadí pro případ, že uživatel chce generování kdykoliv ukončit.
 
 ---
 
 ## 3. Technická realizace krok za krokem
 
-### Krok 1: Logika slučování v `StreamFileExtractor` a `ChatViewModel`
-- Přidání metody `mergeContinuation(originalText, originalFiles, newChunkText)`:
-  - Detekuje, zda byl původní kód zakončen otevřeným blokem ` ```<lang> `.
-  - Pokud model v pokračování vynechal úvodní ` ``` `, kód je přímo připojen do těla posledního souboru.
-  - Pokud model zahájil novým ` ``` `, bloky jsou korektně spojeny do jednoho celistvého souboru.
-- V `ChatViewModel.kt`:
-  - `continueGeneration(messageId, targetFileId = null)`:
-    - Namísto vkládání nové zprávy `chatDao.insertMessage` aktualizuje původní `ChatMessageEntity` (`chatDao.updateMessage`) a příslušný `FileArtifactEntity` (`chatDao.updateFile`).
-    - Ukládá přesný `continuePrompt` formátovaný tak, aby model okamžitě navázal bez zbytečného úvodního povídání.
+### Krok 1: Rozšíření `SettingsDataStore.kt`
+- Přidání preference `val IS_UNLIMITED_CONTEXT = booleanPreferencesKey("is_unlimited_context")`.
+- Úprava `AppSettings`:
+  - `isUnlimitedContext: Boolean = false` (nebo `true` dle volby)
+  - `contextLimit: Int = 100` (výchozí navýšeno z 20 na 100, rozsah 5 až 500)
+  - `maxAutoContinueSteps: Int`: hodnota `0` reprezentuje `∞ Neomezeně`.
+- Doplnění metod `updateContextSettings(isUnlimited: Boolean, limit: Int)`.
 
-### Krok 2: Rozšíření `SettingsDataStore` a `SettingsScreen`
-- Doplnění vlastností do `SettingsDataStore`:
-  - `autoContinueEnabled: Boolean` (výchozí `true` nebo dle uživatele)
-  - `maxAutoContinueSteps: Int` (výchozí `3`)
-- Vytvoření moderního UI bloku v `SettingsScreen.kt` s přepínačem a čipy počtu kroků.
+### Krok 2: Úprava logiky sestavení kontextu v `ChatViewModel.kt`
+- V `triggerModelGeneration`:
+  - Pokud je `currentSettings.isUnlimitedContext == true`:
+    `messagesToConsider = allDbMessages` (žádné `takeLast` ořezávání!).
+  - Pokud je `isUnlimitedContext == false`:
+    `recentNonPinned = nonPinnedMessages.takeLast(currentSettings.contextLimit)`.
+- V logice zřetězeného navazování:
+  - Pokud `currentSettings.maxAutoContinueSteps == 0`:
+    Povoleno neomezené navazování bez horního stropu `updatedCount < maxAutoContinueSteps`, dokud `lastFinishReason == "MAX_TOKENS"`.
 
-### Krok 3: Spolehlivý Foreground Service pro běh na pozadí
-- Zajištění, že `activeGenerationJob` není vázán pouze na dočasný životní cyklus obrazovky, ale běží pod aplikačním kontextem `ApplicationScope` a `GenerationForegroundService`.
-- Služba správně drží `PARTIAL_WAKE_LOCK` během streamování přes síť, aby systém neuspal CPU při zhasnutí displeje.
-
-### Krok 4: Tlačítko v `FileArtifactViewerDialog`
-- Přidání callbacku `onContinueGeneration: (Long) -> Unit` do dialogu prohlížeče souboru.
-- Tlačítko pro okamžité navázání s animovaným indikátorem stavu.
+### Krok 3: Modernizace UI v `SettingsScreen.kt`
+- Implementace přepínače neomezeného kontextu a posuvníku s rozsahem `5..500`.
+- Doplnění volby `∞ Neomezeně` do čipů Auto-Continue s odpovídající barevnou signalizací.
 
 ---
 
-## 4. Ověření a testování
+## 4. Ověření a testy
 
-1. **Unit & Robolectric testy**:
-   - Ověření slučování useknutého kódu v `StreamFileExtractorTest`:
-     - Test: Neuzavřený blok kódu + pokračování bez ` ``` ` -> jeden validní spojený soubor.
-     - Test: Neuzavřený blok kódu + pokračování s ` ``` ` -> jeden validní spojený soubor.
+1. **Unit testy v `StreamFileExtractorContinuationTest` & nové testy kontextu**:
+   - Ověření, že při `maxAutoContinueSteps == 0` proces pokračuje.
+   - Ověření, že při `isUnlimitedContext == true` jsou do kontextu zahrnuty všechny zprávy.
 2. **Kompilace aplikace**:
-   - Spuštění `compile_applet` pro ověření 100% stability buildu bez chyb.
+   - Spuštění `compile_applet` a `gradle testDebugUnitTest` k ověření 100% stability.

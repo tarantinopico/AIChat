@@ -52,12 +52,14 @@ import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedButton
+import com.example.ui.theme.CyanPrimaryDark
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
@@ -964,24 +966,119 @@ fun SettingsScreen(
                         steps = 7
                     )
 
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text("Kontextový limit (max zpráv v historii): ${settings.contextLimit}", style = MaterialTheme.typography.bodySmall)
-                    Slider(
-                        value = settings.contextLimit.toFloat(),
-                        onValueChange = { newVal ->
-                            scope.launch {
-                                viewModel.settingsDataStore.updateParameters(
-                                    temperature = settings.temperature,
-                                    topP = settings.topP,
-                                    topK = settings.topK,
-                                    maxOutputTokens = settings.maxOutputTokens,
-                                    contextLimit = newVal.toInt()
+                    Spacer(modifier = Modifier.height(14.dp))
+                    HorizontalDivider()
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("Neomezený kontext (celá historie)", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                            Text(
+                                "Odešle do Vertex AI kompletní historii všech zpráv a souborů vlákna bez ořezávání (využívá obří 1–2M tokenové okno Gemini).",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = settings.isUnlimitedContext,
+                            onCheckedChange = { isUnlimited ->
+                                scope.launch {
+                                    viewModel.settingsDataStore.updateContextSettings(
+                                        isUnlimitedContext = isUnlimited,
+                                        contextLimit = settings.contextLimit
+                                    )
+                                }
+                            }
+                        )
+                    }
+
+                    if (settings.isUnlimitedContext) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Aktivní: Žádné zprávy se neořezávají. Model má v kontextu celé vlákno.",
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    fontWeight = FontWeight.Medium
                                 )
                             }
-                        },
-                        valueRange = 5f..50f,
-                        steps = 8
-                    )
+                        }
+                    } else {
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Kontextový limit zpráv: ${settings.contextLimit}",
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium)
+                            )
+                            Text(
+                                text = "Rozsah: 5 až 500 zpráv",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        Slider(
+                            value = settings.contextLimit.toFloat(),
+                            onValueChange = { newVal ->
+                                scope.launch {
+                                    viewModel.settingsDataStore.updateContextSettings(
+                                        isUnlimitedContext = false,
+                                        contextLimit = newVal.toInt()
+                                    )
+                                }
+                            },
+                            valueRange = 5f..500f
+                        )
+
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Rychlé předvolby počtu zpráv:",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            listOf(20, 50, 100, 250, 500).forEach { limitVal ->
+                                FilterChip(
+                                    selected = settings.contextLimit == limitVal,
+                                    onClick = {
+                                        scope.launch {
+                                            viewModel.settingsDataStore.updateContextSettings(
+                                                isUnlimitedContext = false,
+                                                contextLimit = limitVal
+                                            )
+                                        }
+                                    },
+                                    label = { Text("$limitVal", fontSize = 11.sp) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = MaterialTheme.colorScheme.primary,
+                                        selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                                    )
+                                )
+                            }
+                        }
+                    }
                 }
             }
 
@@ -1083,9 +1180,9 @@ fun SettingsScreen(
                             Spacer(modifier = Modifier.height(6.dp))
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                listOf(1, 2, 3, 5).forEach { steps ->
+                                listOf(1, 2, 3, 5, 0).forEach { steps ->
                                     FilterChip(
                                         selected = settings.maxAutoContinueSteps == steps,
                                         onClick = {
@@ -1097,10 +1194,17 @@ fun SettingsScreen(
                                             }
                                         },
                                         label = {
-                                            Text(if (steps == 3) "3× (doporučeno)" else "$steps×", fontSize = 11.sp)
+                                            Text(
+                                                when (steps) {
+                                                    0 -> "∞ Neomezeně"
+                                                    3 -> "3× (doporučeno)"
+                                                    else -> "$steps×"
+                                                },
+                                                fontSize = 11.sp
+                                            )
                                         },
                                         colors = FilterChipDefaults.filterChipColors(
-                                            selectedContainerColor = MaterialTheme.colorScheme.primary,
+                                            selectedContainerColor = if (steps == 0) CyanPrimaryDark else MaterialTheme.colorScheme.primary,
                                             selectedLabelColor = MaterialTheme.colorScheme.onPrimary
                                         )
                                     )
@@ -1112,7 +1216,11 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.height(10.dp))
                     Text(
                         text = if (settings.autoContinueMode == "AUTO") {
-                            "⚡ Auto-Continue je AKTIVNÍ: model automaticky dopíše kód do stejného souboru až ${settings.maxAutoContinueSteps}× za sebou."
+                            if (settings.maxAutoContinueSteps == 0) {
+                                "⚡ Auto-Continue je v režimu ∞ NEOMEZENĚ: model bude automaticky dopisovat kód do stejného souboru tak dlouho, dokud není kompletní."
+                            } else {
+                                "⚡ Auto-Continue je AKTIVNÍ: model automaticky dopíše kód do stejného souboru až ${settings.maxAutoContinueSteps}× za sebou."
+                            }
                         } else {
                             "👆 Manuální režim: v chatu a v prohlížeči artefaktu se při limitu tokenů zobrazí tlačítko 'Pokračovat v kódu'."
                         },

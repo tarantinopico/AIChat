@@ -402,13 +402,18 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             allDbMessages
         }
 
-        val pinnedMessages = messagesToConsider.filter { it.isPinned }
-        val nonPinnedMessages = messagesToConsider.filter { !it.isPinned }
-        val recentNonPinned = nonPinnedMessages.takeLast(contextLimit)
-
-        val finalContextList = (pinnedMessages + recentNonPinned)
-            .distinctBy { it.id }
-            .sortedBy { it.createdAt }
+        val finalContextList = if (currentSettings.isUnlimitedContext) {
+            messagesToConsider
+                .distinctBy { it.id }
+                .sortedBy { it.createdAt }
+        } else {
+            val pinnedMessages = messagesToConsider.filter { it.isPinned }
+            val nonPinnedMessages = messagesToConsider.filter { !it.isPinned }
+            val recentNonPinned = nonPinnedMessages.takeLast(contextLimit)
+            (pinnedMessages + recentNonPinned)
+                .distinctBy { it.id }
+                .sortedBy { it.createdAt }
+        }
 
         val vertexContents = mutableListOf<VertexContent>()
         for (msg in finalContextList) {
@@ -620,7 +625,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
                         // If limit reached again and auto-continue is active, chain continuation
                         if (lastFinishReason == "MAX_TOKENS" && currentSettings.autoContinueMode == "AUTO") {
-                            if (updatedCount < currentSettings.maxAutoContinueSteps) {
+                            val canContinue = currentSettings.maxAutoContinueSteps == 0 || updatedCount < currentSettings.maxAutoContinueSteps
+                            if (canContinue) {
                                 continueGeneration(targetMessageId)
                             }
                         }
@@ -667,9 +673,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     GenerationForegroundService.completeService(getApplication(), finalParsed.files.size, totalLines)
 
                     if (lastFinishReason == "MAX_TOKENS" && currentSettings.autoContinueMode == "AUTO") {
-                        if (currentSettings.maxAutoContinueSteps > 0) {
-                            continueGeneration(messageId)
-                        }
+                        continueGeneration(messageId)
                     }
                 }
 

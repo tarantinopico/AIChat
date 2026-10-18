@@ -1,6 +1,6 @@
 {
-  "summary": "Implementační plán pro opravu pokračování v artefaktu, zapnutí automatického pokračování v nastavení a spolehlivé generování na pozadí",
-  "updatedAt": "2026-10-18T08:20:07.835647560Z",
+  "summary": "Implementační plán pro neomezené automatické opakování (Auto-Continue) a opravu/rozšíření maximálního kontextu až na 500 zpráv či celou historii konverzace.",
+  "updatedAt": "2026-10-18T11:04:24.600107430Z",
   "requestFeedback": true,
   "userFacing": true
 }
